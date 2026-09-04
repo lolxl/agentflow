@@ -1,222 +1,86 @@
-<!--
-`2026-08-13` agentflow pipeline of the agentflow skill. Loaded on demand by SKILL.md's Triage — never eagerly — so small work pays no pipeline tokens.
--->
+<!-- Loaded only for selected-advisor or full-pipeline work. -->
 
 # Agentflow pipeline
 
-The pipeline turns user wishes (tasks) that produce or change product behavior into evidence: settled requirements, an implementable specification, isolated implementation, and independent acceptance. Understand the desired outcome, keep workflow details hidden unless the owner asks, and choose the smallest route that preserves the required evidence.
+Use this file only after the devlog protocol and adjacent `ag.json` are validated. The pipeline turns a behavior wish into requirements, a current repository map when justified, a specification, isolated implementation, and independent acceptance. Keep workflow detail out of owner-facing prose unless needed.
 
-## Standing context
+Rule-editing guard: `— I-NNN` marks a rule born from a real failure. Read its narrative in `docs/incidents-log.md` before changing or removing it.
 
-- This file never runs standalone. When it loads, the devlog protocol is already active: $target_doc (`devlog.md`) is the single owner conversation surface, and `references/delegation.md` is the delegation rulebook for every dispatch — its confinement rules and background-process watchdog are mandatory here.
+## Front door and route
 
-- The verbatim pass-down blocks (KISS, scope discipline) live in SKILL.md's "Design and scope discipline" section; copy them word for word into every advisor and coder brief.
+Read `references/delegation.md` before selecting or dispatching an executor; it owns frozen-brief transport, confinement, profiles, watchdog, attempts, and acceptance. For evaluation-harness work, read `eval/evaluation-harness.md` before evaluation-harness work.
 
-- Model routing follows delegation.md's model family guide; the Advisor defaults below only say which station gets which tier. External-CLI dispatch is subject to $cli_provider (`off` removes other-family CLIs, keeping only the same-host CLI as a confinement fallback per SKILL.md Modes; `any`/`codex`/`claude` permit it).
+Read and validate adjacent `ag.json`, STATUS, the latest unfinished Ask, Git state, and exact current artifacts before choosing work. Record one route: `direct`, `selected_advisors`, `full_pipeline`, or `blocked`, naming operation, `allow-ag`, material risks, named questions, owner confirmation, and plain-language reason. `$target_doc` is the owner conversation and live recovery surface; STATUS is recovery projection, not settings storage.
 
-- **Fail closed on unenforceable isolation:** when no available executor can enforce a brief's declared write authority, do not dispatch — report in `devlog.md` that the required evidence chain is unavailable, and ask the owner with the smallest safe alternative as the suggested default.
+- `direct`: clear local reversible work whose files, focused test, and final relevant suite are identifiable.
+- `selected_advisors`: each named advisor answers an important question that direct work cannot settle; naming a stage without stating its question is insufficient.
+- `full_pipeline`: expensive-to-reverse behavior, important trust/subsystem boundary, serious hidden-test risk, or enabled explicit trigger.
+- `blocked`: an `allow-ag`/owner decision, unavailable confinement, missing evidence, exhausted attempts, or other hard stop prevents work.
 
-## Front door and recovery
+`allow-ag: on` permits selected/full routes; `off` blocks them before Agentflow and never silently downgrades; `ask` requires recorded owner approval for complex pipeline jobs. A simple job can use the direct planning route under every setting. A route trigger is not a settings change and never overrides `off`; only a separate validated `allow-ag: on` change can enable a later complex pipeline route.
 
-- Read `STATUS`, the latest unfinished Ask, Git state, and relevant current artifacts (including `runlog.md`) before choosing the next action.
+Direct work needs no approval. Explicit `ag`, `agentflow`, and `all-in` force full pipeline when allowed. `make-plans` classifies each job as simple or complex, publishes self-contained simple plans directly, retains the accepted requirements/specification gate for complex plans, names blocked complex jobs, and stops after frozen queue publication.
 
-- Use `devlog.md` as the only owner conversation surface for questions, suggested defaults, progress, evidence, fallbacks, and next actions.
+The exact owner trigger `3ways` or `threeways` is the narrow exception: it permits one read-only pre-implementation `threeways` review through the unified runner even when `allow-ag` is off. It neither enables a pipeline nor authorizes implementation. The host records its immutable debate artifacts, consensus or unresolved state, and the later human Design Go or Stop boundary.
 
-- Record stable decisions, the selected route, exact artifact paths, evidence, and dependency state in the current round, while keeping advisor names, filenames, model parameters, and routing syntax hidden unless the owner asks to inspect or control them.
+Before calling `plan_jobs`, the natural-language host inspects the owner request and relevant repository evidence for each job and supplies `complexity_reasons`: a unique list containing only applicable reasons from `material_uncertainty`, `cross_subsystem_coordination`, `public_or_stored_data_contract`, `trust_boundary`, and `unresolved_material_decision`. Empty routes directly as simple; non-empty routes through the complex pipeline. The owner supplies the work request, not a route, and job length is never used. For execution, looper uses `select_frozen_ready_plans`, and an ordinary host uses `select_host_ready_plans`; both names refer to the exact same function object.
 
-## Route selection
+## Pipeline stages and codewalk gate
 
-- Answer pure explanations, status requests, and codebase questions directly in `devlog.md` without creating pipeline artifacts.
+The canonical durable `pipeline-roles` names are `requirements`, `codewalk`, `explore`, `spike`, `spec`, `implementation`, `security-scan`, `acceptance`, `cross-check`, and `learn`; each is a configured tier or `off`. `cross-check` selects the external worker tier for the separate post-implementation gate and is not added to the full-pipeline stage order. Per-request `advisors:` remains a validated fixed roster and narrows/overrides durable defaults for that Ask.
 
-- For every wish that proceeds to code, run `references/advisors/requirements.md` → `references/advisors/spec.md` → one coding subagent → `references/advisors/acceptance.md`; when accepted decisions already cover the work, requirements may scale down to confirming or refreshing the final summary, and brownfield work also runs `references/advisors/codewalk.md` before dependent specification work, scaled down to a freshness confirmation or delta update when an exact-surface map is current. Requirements and brownfield codewalk cannot be omitted because owner intent, repository evidence, an implementable contract, isolated implementation, and independent acceptance are the minimum development evidence.
+Its selection is frozen in the brief/run record, survives recovery and amendments, and never widens because context was lost. `all-in` runs every optional advisor and forbids scaled-down mandatory stages for that Ask.
 
-- Use evidence-triggered advisors only for their named need: `references/advisors/explore.md` for material risk or uncertainty after requirements and discovery; `references/advisors/spike.md` for one technical question needing observed evidence before specification; `references/advisors/security-scan.md` over changed files and affected trust boundaries when security is touched or requested; and `references/advisors/learn.md` after a real lesson, error, surprise, workaround, or recommendation, not an uneventful task.
+Full pipeline order is requirements, existing-repository discovery, codewalk when triggered, applicable explore/spike, specification, implementation, security review, acceptance, and applicable learn. Requirements, specification, implementation, and acceptance are mandatory: if their durable setting is `off`, validation warns that the full pipeline is unavailable; never claim a complete pipeline. Codewalk, explore, spike, security-scan, and learn may be skipped only with recorded evidence and the configured/route reason.
 
-- Mandatory advisors may scale down but still produce their artifact; evidence-triggered advisors may decline with a short prose explanation.
+When the Ask contains `cross-check`, apply it to the final implementation result, not to each pipeline stage. Mandatory external acceptance may serve as the one cross-check only when its report covers the same final implementation commit and satisfies the cross-check report contract in `SKILL.md`; otherwise dispatch one external read-only reviewer after implementation. Requirements, codewalk, explore, spike, specification, security, acceptance, and learn do not each receive another cross-check.
 
-- **Scale-down changes depth, never authorship.** Every mandatory artifact — requirements, brownfield codewalk, specification, acceptance — is produced by a fresh dispatched executor under the Subagent execution contract, including its scaled-down forms (a freshness confirmation, a delta update, a summary refresh). An evidence-triggered advisor answered "run" is also dispatched fresh; otherwise it is declined with the required runlog evidence. A coordinator read or a coordinator-authored file never satisfies an advisor station, and acceptance is never coordinator-authored in any form. — incident 2026-08-14: two e2e coordinators "scaled down" requirements, spec, and acceptance to self-authored artifacts (one omitted requirements.md and codewalk.md entirely), dissolving independent acceptance.
+For an existing repository, discovery is recorded. Codewalk is required only when at least one trigger is true: unfamiliar code, multiple subsystems, public interface, stored data, trust boundary, or stale/missing map. With a trigger, one accepted current codewalk record can satisfy both logical obligations only when it has an explicit shared-coverage marker, current codewalk evidence, answered questions, and the required discovery facts: verified paths, fact/inference labels, public boundaries, conventions, likely edit locations, focused commands, and unexamined areas.
 
-- Reconsider the route after every report instead of launching the remaining pipeline in advance.
+Without a trigger, retain the small discovery record and do not dispatch codewalk. The codewalk advisor starts at the named surface, reads necessary context only, and does not run commands by default; later work refreshes only affected parts.
 
-### Trigger questions — auditable skips
+The four evidence-trigger answers are recorded in a devlog RUN event before run/skip: explore — material risk or uncertainty remains after requirements/discovery; spike — one named technical question needs observed evidence before specification; security-scan — security/trust boundary is touched or requested; learn — a real lesson, error, surprise, workaround, or recommendation occurred. Skip only with concrete evidence for “no”; uncertainty runs the advisor or asks the owner. `all-in` answers every trigger “run”. Mandatory advisors may scale depth but still produce their artifact; every selected/run advisor is fresh external work, not coordinator authorship, and acceptance is never coordinator-authored.
 
-The evidence-triggered advisors run on the master's judgment, and a prompt-only skill cannot enforce judgment in software. The control is visibility: before running or skipping any of the four, answer its fixed trigger question in the runlog in one line, with the concrete evidence behind the answer.
+After the pipeline is selected, one final route check may move a trivial, unambiguous, mechanical request back to direct work. Record that change as a devlog question with a suggested default, use one brief, let the coordinator verify the result, and create no artifact directory. `$auto_reply_mode=on` may accept the safe default; `all-in` disables this shortcut.
 
-- explore: does material risk or uncertainty remain after requirements and discovery?
+## Queue, artifacts, and live events
 
-- spike: does one named technical question need observed evidence before the specification can be trusted?
+Decomposition runs `tracker-contract.js template` and fills that exact output as `<work-root>/tracker.md` before dependent work. Validate it before each checked checkpoint. Refresh it after scope changes, milestones, checkpoints, and before long work or completion; continue after writing. It supplements the devlog and never replaces queue or looper authority.
 
-- security-scan: does the change touch security or a trust boundary, or did the owner request a scan?
+`make-plans` freezes simple jobs directly and freezes complex jobs only after accepted requirements/specification and no unresolved material choice. Publish candidate plan bytes privately, move without overwrite, and publish `.queue-generation.json` last. Schema-v2 envelopes bind each simple plan to its owner request and repository evidence, each complex plan to the accepted contract, and the final integration plan to every published route authority.
 
-- learn: did this work item produce a real lesson, error, surprise, workaround, or recommendation?
+A denied mixed request may publish only an independent simple-only queue whose final integration claim excludes blocked work. Check open/completed names and queue collisions before staging. Plans gain authority only when the envelope exists and digests match; make-plans never starts implementation.
 
-Fail-safe: a skip is legal only when the master can cite concrete evidence for "no". When the answer is uncertain, run the advisor or ask the owner — never skip on uncertainty. Stated honestly: this reduces under-triggering and makes every trigger decision a written, dated fact the owner can audit, but judgment stays with the model — a prompt-only skill cannot eliminate it, and the sign-off gates cannot catch every wrong skip (a wrongly skipped security scan is invisible to a spec-sealed acceptance).
+Allocate one work root at `$workspace_dir/artifacts/<work-key>/`, or `$workspace_dir/features/<taskkey>/artifacts/<work-key>/` in a stream. Keep all new files there; planned files belong in that root's `planned/`. New prompts/reports use paired `*-brief.md`/`*-report.md` names, with `implementation-brief.md`/`implementation-report.md` and `spikes/<question-key>-brief.md`/`-report.md` as specified.
 
-### Second triage guard
+Existing allocated paths remain authoritative. Record raw branch identity because the root path no longer names it; use the smallest numeric suffix on a collision.
 
-- If the pipeline receives a trivial development wish with no product ambiguity, no new behavior contract, and one bounded mechanical change, ask a `devlog.md` deviation question with the direct route as its suggested default — a one-paragraph mini-spec, one coding subagent, the master's verification, and no artifact directory — and pause unless $auto_reply_mode `on` applies that default.
+Every artifact opens with one fresh Taipei stamp `* _YYYY-MM-DD HH:MM:SS (<model>/<effort>)_` and ends with exactly one final `Self-check:` content line. The artifact gate checks path, size, freshness, boundaries, and verified generation reference; trailing newline is allowed. A syntactically valid model or effort that differs from trusted dispatch metadata produces a warning and never triggers a paid retry. Create no placeholders. Commit a canonical artifact before replacing it and keep artifacts and branch markers tracked.
 
-- When the ask carries the `all_in` control phrase (defined in SKILL.md's Triage), this guard is closed: the deviation question is not asked and the direct route may not be taken. Additionally, every trigger question above is answered "run" for that ask, and no mandatory advisor may scale down — full depth, full artifacts, with the phrase's presence noted in the runlog.
+Append numbered RUN events to `$target_doc` after material transitions. Each event has a fresh Taipei timestamp, declares its Ask, and records one or more short facts. Record routes, dispatch identities, gates, results, answers, substitutions, failures, relaunches, deviations, and scope checks. Launches are recorded before start, results after collection, and gates before dependent work. WIP remains the complete ten-minute owner status and does not repeat the event trail.
 
-### Natural-language triggers
+Before each checkpoint or Reply, reconcile live handles, commits, gates, the tracker, and the current devlog events. Late repairs name the missing span. Noncompleted results include status, exit or signal, timeout, launch error, and up to 4,096 output bytes; absent values are `none`. Historical runlog files remain untouched and are not current evidence. — I-017/I-057.
 
-```text
-“I have an idea” starts by settling requirements.
-“Where should I change this?” maps the brownfield surface before dependent work.
-“Explain this code” is answered directly when no behavior change is requested.
-“Define the behavior” settles owner intent, then creates the specification.
-“Implement this feature” follows the required development chain.
-“This is broken” adds a tight reproduction and regression loop during coding.
-“Test this approach first” may add one spike for the named uncertainty.
-“Review this security-sensitive change” adds a scan over the declared boundary.
-“Is this ready?” checks the accepted specification against the implementation.
-“Continue” recovers the current route and evidence from the devlog and Git state.
-“Learn from this incident” adds a lesson only when the evidence supports one.
-```
+Round compaction is a protocol operation: copy complete older physical Ask spans unchanged into the one adjacent `<basename>.archive.md` in chronological order, verify identifier, byte length, and SHA-256 before removing the same live bytes, and preserve every verified copy on interruption or uncertainty. `Archived eras:` points only to that adjacent path or `none`; it never contains labels, ranges, batches, or an index. Keep the current round below STATUS and the next empty Ask scaffold at the end, and write the Reply before the final STATUS projection.
 
-## Artifact namespace
+## Gates and evidence
 
-- Allocate one root per branch and work item at `artifacts/<branch-key>/<work-key>/`, and allocate every exact path before dispatch.
+Keep dependencies current and rerun only affected evidence: owner decisions invalidate dependent exploration/spec/implementation/security/acceptance; changed brownfield surfaces invalidate codewalk/spec assumptions; exploration/spikes invalidate affected spec; changed spec invalidates implementation and post-implementation reports; changed implementation invalidates security/acceptance; late requirements require spec refresh.
 
-- Derive `<branch-key>` from the current Git branch by replacing unsafe path characters and `/` with `-`, or use `detached-<short-commit>` or `no-branch`; write the raw branch identity to `artifacts/<branch-key>/.branch` in the first artifact commit, and use the smallest numeric suffix when an existing or merge-conflicted marker names another identity.
+Worker findings do not change the accepted scope. Before a finding becomes a requirement, invariant, repair, test, or implementation change, the coordinator records the exact owner-request sentence or existing standing obligation that requires that observable behavior. Without that trace, reject the finding or park it as a proposal. Reviewer severity and hypothetical failure paths are evidence to consider, not authority to expand the product. — I-054.
 
-- Assign one short stable `<work-key>` when accepting the wish, record it in the current devlog round, and use the smallest numeric suffix when that key collides.
+Requirements and specification each have a sign-off gate before coding. With `auto-reply: off`, point only to the exact requirements report and open IDs in the devlog; owner answers go in one empty `- ans:` field per question and still require devlog sign-off. With `on`, only safe routine defaults receive explicit same-pass provenance; owner-only, conflicting, failed, missing, or hard-stop decisions remain open. The spec gate verifies each `R-<n>` coverage ledger maps to its section and `INV-<n>` IDs.
 
-- Use canonical current-state filenames `requirements.md`, `codewalk.md`, `explore.md`, `spec.md`, `implementation-report.md`, `security-scan.md`, `acceptance.md`, `learn.md`, and `runlog.md`; put each spike at `spikes/<question-key>.md` and its throwaway code under `spikes/scratch/`.
+Security is one defensive pass over declared changed files and trust boundaries. A moderation refusal is an executor error, not a clean scan; retry once with equivalent defensive wording. The owner or coordinator must decide how to handle findings about data loss, destructive behavior, exposed credentials, or failure of the behavior the owner explicitly requested; record other findings as follow-up work.
 
-- **Every artifact document opens with one stamp line before any other content:** `* _<YYYY-MM-DD HH:MM:SS> (<model/effort>)_` — Taipei time plus the exact model that wrote the file (for example `claude-fable-5/medium`), same shape as the devlog Reply stamp. The writer stamps its own output: an advisor or coder uses the Model and Effort values from its brief; the master stamps the files it writes itself. `runlog.md` stamps its allocation once at the top; its entries already carry their own timestamps. Obtain the time by shelling out immediately before writing each stamp — never copy, round, reuse, or project one — and always write the full `<model>/<effort>` pair from the runtime or brief (`metadata unavailable` when the runtime provides none, never an invented or shortened identity). — incident 2026-08-14: a session that ended at 16:06 stamped its artifacts 16:20 and 16:22, with the effort field dropped.
+Acceptance first marks every `R-<n>` as covered, missing, or not proven, then rechecks each `INV-<n>` with real commands, keeping behavior separate from record quality. Missing evidence remains not proven. Neither stage starts an automatic repair loop.
 
-- Create only files required by the selected route; do not create empty placeholders.
+Formal repair is coordinator-only and limited to a fixed stamp, heading, path label, or final boundary from immutable authority/verified evidence; record before/after identities, span, and unchanged outside bytes, then rerun the gate. Substantive defects return to the responsible stage. Review stages keep one identity, preflight working directory/test/executable/authentication, and at most three total starts; one preflight failure before process/model start is free, all post-start failures count, and unavailable facts are `SKIP`.
 
-- Commit a canonical artifact before replacing it, and keep all of `artifacts/`, including every `.branch` marker, Git-tracked and committed. Git is the current-state artifact history and branch identity must survive merges.
+## External implementation handoff
 
-- If `.gitignore` explicitly excludes `artifacts/`, ask the owner in `devlog.md` instead of force-adding it.
+Use delegation's frozen-brief, write-authority, and delivered-checkout verification rules. The worker stops and asks the master on any unclear, contradictory, wrong, or missing requirement/specification. It uses narrow vertical slices, red-first tests, same-commit regression tests, focused checks, declared verification, and invariant IDs; it preserves user changes and writes only its report/result.
 
-- Advisors receive exact paths and do not scan `artifacts/` for a likely or latest file.
+Use configured `better` for requirements, codewalk, explore, spike, and spec; `best` for security-scan; `basic` for implementation; and `better` for acceptance, preferably a different family. Apply owner overrides exactly; an unavailable coordinator-selected model may use the nearest tier with a recorded substitution, but an unavailable owner override pauses. Never launch when write authority cannot be enforced.
 
-## Runlog — the execution audit trail
-
-- **Governed by the `runlog` setting (SKILL.md Modes, default `on`).** When `runlog: off`, do NOT allocate, create, or append to `runlog.md` — skip every rule in this section, including the reconcile-before-Reply step; the devlog round remains the record of route, dispatches, and decisions. Everything below applies only while `runlog: on` (the default).
-
-- Append one entry to `artifacts/<branch-key>/<work-key>/runlog.md` at the moment each pipeline event happens, so the owner can audit afterward exactly what ran, in what order, what was skipped and why, and what went wrong.
-
-- Entry shape: `## <Taipei timestamp> — <step name>` plus a few short bullets. When a result lives in its own artifact, name that file instead of duplicating its content.
-
-- Allocate `runlog.md` when the pipeline route is accepted, together with the other artifact paths.
-
-- Events that must land in the runlog: every route decision, including every skipped or declined advisor with its trigger-question answer; every dispatch — advisor, executor kind (built-in subagent or which external CLI), model, effort, and the active mode values; every result (accepted, or rejected with the reason — for example why a report was sent back); every sign-off gate verdict; every $auto_reply_mode auto-answer; every model substitution or fallback; and every error, hang, kill, relaunch, deviation, or surprise.
-
-- Single writer: only the master writes `runlog.md`; advisor briefs never name it as an input or output.
-
-- **Reconcile before every Reply:** before writing a round's Reply in `devlog.md`, check `runlog.md` against all work performed since its last entry; every event this section requires must already be present. Append any missing entries first, and record the late repair itself as a deviation. — incident 2026-08-14: an e2e run logged only the allocation entry; the coding dispatch, both gate verdicts, the scan, and acceptance all went unlogged.
-
-- The trivial direct route has no artifact directory, so its record stays in the devlog round; state there that the direct route ran.
-
-## Dependencies and invalidation
-
-- Keep the dependency view current in `devlog.md`, and rerun only evidence affected by a change.
-
-- A changed owner decision invalidates its dependent exploration, specification, implementation, security, and acceptance evidence.
-
-- A changed brownfield surface invalidates affected codewalk claims and specification assumptions.
-
-- A new exploration or spike finding invalidates the affected specification section.
-
-- A changed specification invalidates implementation completion and every post-implementation report for the changed behavior.
-
-- A changed implementation invalidates affected security and acceptance evidence.
-
-- A late requirements change requires the affected specification to be refreshed before implementation continues.
-
-## Owner sign-off gates
-
-Both gates run whenever a new or changed requirements or spec artifact is about to authorize coding — one after the requirements final summary, one after the specification. Both direct routes are exempt because neither creates such an artifact: the outer triage-direct route (which never enters this file) and this file's second-guard direct route (the only one with a deviation question).
-
-- With `auto_reply: off`, ask one batched `devlog.md` question — "does this requirements summary match your wish?" or "does this spec match your wish?" — with suggested default yes, and pause dependent stages until the owner answers. A suggested default is not an owner answer. Keep each unanswered `Q-<n>` or `D-<n>` open, and do not relabel it as an owner decision or use its suggested value as a fixed observable behavior, scope, or constraint. Continue only with work that does not depend on that decision. — incident: A-016 learn review P-1; both live trials silently promoted suggested defaults to "owner decisions".
-
-- With `auto_reply: on`, perform the review yourself on the owner's behalf and record the verdict in the runlog: at the requirements gate, check every `R-<n>` and every decision used by later artifacts against ALL recorded accepted owner statements — the verbatim ask plus later devlog answers and explicit auto-answers. An explicit auto-answer must name the `Q-<n>` or `D-<n>` it resolves. At the spec gate, check that the coverage ledger maps every `R-<n>` to a spec section and its `INV-<n>` IDs, and do not treat a decision still marked open as settled. Escalate to the owner only on a found mismatch.
-
-## Subagent execution contract
-
-Every advisor call uses a fresh executor — the host's subagent mechanism or, when $cli_provider is not `off`, an external CLI per delegation.md — and this frozen brief:
-
-```text
-Advisor: <name>
-Advisor prompt: <exact references/advisors/... path>
-Goal: <one bounded result>
-Repository root: <exact path>
-Read inputs: <exact paths only>
-Write output: <one exact artifact path>
-Model: <selected model>
-Effort: <selected effort>
-Output language: <the resolved $output_language — detected once by the master;
-                  never re-detect inside the sandbox>
-Write authority: source read-only; exactly the output path is writable.
-                 Spike additionally gets its declared scratch directory.
-                 Acceptance additionally gets execute rights for the declared
-                 build/test commands, run in a disposable clone or worktree by
-                 default (per delegation.md's confinement shapes); bounded
-                 write authority over those commands' own output paths
-                 (caches, coverage, generated files, build directories) in
-                 the real checkout is the fallback only when a disposable
-                 root is unavailable, with git status verified afterward.
-                 It never intentionally edits source or other artifacts.
-Owner decisions: <only the current accepted decisions needed here>
-Completion: open the report with the stamp line
-            `* _<YYYY-MM-DD HH:MM:SS> (<Model>/<Effort>)_` (Taipei time,
-            obtained by shelling out — never guessed; Model/Effort from this
-            brief), write the report, then return its path and a short
-            factual summary
-```
-
-- Include the exact-scope and KISS rules — SKILL.md's verbatim pass-down blocks — and only the evidence needed for the bounded call.
-
-- Advisors put missing decisions in their report and do not ask the owner directly.
-
-- Read every report, verify that its artifact exists, check practical claims, and read its final `Self-check:` line; a report whose self-check names a failed invariant is rejected and redone, and a completion message is not acceptance evidence. Then decide the next route.
-
-- Run every dispatch under delegation.md's background-process watchdog: a stated deadline, an early check, periodic liveness checks, an independent fallback wake armed whenever a turn ends with the dispatch still running, termination and `devlog.md` reporting for a hang, and at most one corrected relaunch. — incident 2026-08-01: an unbounded background test wait cost about ten silent hours.
-
-## Model, effort, and advisor defaults
-
-- **Executor choice per dispatch:** the host's built-in subagent mechanism, or — when $cli_provider is not `off` — an external CLI from a different model family (under `off`, the same-host CLI stays available as a confinement fallback per SKILL.md Modes). The master chooses per dispatch at its discretion, under delegation.md.
-
-- Use a high-level planner/reviewer tier from delegation.md's model family guide for `references/advisors/requirements.md`, `references/advisors/codewalk.md`, `references/advisors/explore.md`, `references/advisors/spike.md`, `references/advisors/spec.md`, and `references/advisors/security-scan.md`.
-
-- Use the default worker tier for the coding subagent; use a planner/reviewer tier for `references/advisors/acceptance.md`, preferring a model family decorrelated from the coder model. When $cli_provider leaves no different-family worker available (`off`, or a family name equal to the host's own), use the strongest available same-family reviewer and record the substitution.
-
-- Apply an owner's model or effort override to one call, one phase, or the whole work item as stated.
-
-- If a model the master selected itself is unavailable, fall back to the nearest available tier and record the substitution in the runlog and round. If the unavailable model was an owner override, ask and pause — never substitute silently (unless the owner explicitly allows it).
-
-- If any route, model, effort, artifact, or content choice conflicts with an explicit owner instruction, ask a `devlog.md` question with a suggested compliant default and pause affected work unless an approved fallback or $auto_reply_mode `on` applies.
-
-## Coding subagent handoff
-
-Dispatch one coding subagent with the accepted specification and exact relevant evidence paths. Its frozen brief requires it to:
-
-- Decompose internally at the smallest useful size and implement the complete approved specification.
-
-- **Stop and return when a gap appears, at any stage:** if internal planning or decomposition — or the implementation work itself — finds an unclear, ambiguous, contradictory, wrong, or missing requirement or specification, stop immediately and return the concrete question to the master instead of guessing or inventing a product decision — the master reruns the affected requirements or specification work until the question is settled, then re-dispatches coding with the refreshed contract.
-
-- Deliver narrow end-to-end vertical slices across affected layers through small, useful public seams that permit behavior tests without reaching into internals, keeping each change and its tests together and avoiding abstractions without a current need.
-
-- Use red-capable feedback loops: for TDD, agree the seam, write the behavior test, confirm the intended red result, make the smallest green change, and refactor with tests green; for bugs, minimize the reproduction, probe falsifiable causes, lock the fix with a regression test, and rerun the original symptom.
-
-- Keep every regression test in the same commit as its fix.
-
-- Run focused tests while working and the repository's declared verification before completion, then verify every specification invariant under its existing `INV-<n>` ID.
-
-- Preserve existing user changes and stay inside approved scope.
-
-- Write `implementation-report.md` — opening with the artifact stamp line (its own model/effort, per the Artifact namespace rule) — with changed files, invariant coverage, commands and results, open issues, and commit identity.
-
-## Acceptance and completion
-
-- Give `references/advisors/acceptance.md` the accepted specification, the requirements final summary, implementation report, changed repository state, relevant codewalk, and security report when present; require it to first verdict every `R-<n>` as covered, missing, or not proven, then re-verify every `INV-<n>` with executed evidence, keeping behavior findings separate from code-quality and convention findings. A missing requirements record is missing evidence: acceptance reports it and cannot conclude.
-
-- When acceptance finds a violated or unproven invariant, or a missing or unproven requirement: preserve untouched evidence, invalidate only affected security and acceptance evidence, rerun the affected upstream stage carrying the named corrections — specification for a dropped or unmapped requirement, coding for a behavior violation — and re-run acceptance for the affected IDs. If the correction would change observable behavior, scope, or an invariant's starting condition, treat that correction as an owner decision. Do not amend the specification, call the choice settled, or dispatch coding until the owner answers or an explicit auto-answer is recorded in the devlog. — incident: A-016 learn review P-2; trial v2's coordinator narrowed a failed contract (D-11) and labeled its own ruling an owner decision.
-
-- Run at most two automatic fix-and-reverify rounds; after the second failure, ask the owner in `devlog.md` with evidence and remaining options. This escalation is an owner-must-decide question by nature (hard-stop category 1 in SKILL.md's Modes): it is never auto-answered, in any mode — under `auto_reply: on` the turn still ends and waits for the owner, so the two-round cap is a true ceiling.
-
-- Claim completion only when required artifacts exist, current acceptance verdicts every agreed `R-<n>` as covered — `missing` and `not proven` both block completion — and every `INV-<n>` as satisfied, relevant security evidence is current, declared verification passes, and Git state supports the claim.
+Claim completion only when required artifacts exist, acceptance covers every requirement and satisfies every invariant, relevant security evidence is current, declared checks pass, and Git state supports the claim. Material claims cite coordinator-read or coordinator-executed evidence; worker text alone cannot prove identity, timing, transport, or acceptance.
