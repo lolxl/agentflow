@@ -11,7 +11,7 @@ Rule-editing guard: `— I-NNN` marks a rule born from a real failure. Read its 
 
 ## Start here
 
-1. For a new project, run `node <skill-dir>/scripts/agf.js init`. It creates the settings and notebook pair, the three ignore entries, and project hooks. It does not run `git init`.
+1. For a new project, run `node <skill-dir>/scripts/agf.js init`. It creates the settings and notebook pair, the four ignore entries (`.claude/`, `.codex/`, `.cursor/`, `.worktrees/`), and project hooks. It does not run `git init`.
 
 2. On every activation, use one bounded local intake command before other discovery: `node <skill-dir>/scripts/resume-intake.js --repo <repo> --notebook <target-doc> --host <registered-host>`. Registered hosts include `codex`, `claude`, and `grok-bot` (aliases `grok`, `cursor`). `AGENTFLOW_HOST` is a registry-validated override. Unknown hosts stay blocked.
 

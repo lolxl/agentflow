@@ -1036,6 +1036,7 @@ const carry_forward_card = ({ repo_root, old_notebook, new_notebook, fs_api = no
 }
 
 const rename_target_document = (options = {}) => {
+	const active_host = detect_host(options)
 	const repo_root = node_path.resolve(options.repo_root || process.cwd())
 	const old_notebook = relative_notebook_path(repo_root, options.old_notebook || options.from)
 	const new_notebook = relative_notebook_path(repo_root, options.new_notebook || options.to)
@@ -1082,7 +1083,6 @@ const rename_target_document = (options = {}) => {
 		if (unexpected.length > 0) throw new SettingsError(`target-document rename recovery found unrelated changes: ${unexpected.join(', ')}`, { code: 'AG_RENAME_DIRTY' })
 	}
 	const source_config_path = fs_api.existsSync(old_config_path) ? old_config_path : new_config_path
-	const active_host = options.active_host || options.explicit_host || detect_host(options)
 	const config = read_json_config(source_config_path, { ...options, repo_root, active_host })
 	if ((!resuming && config.switches['target-doc'] !== old_notebook) || (resuming && ![old_notebook, new_notebook].includes(config.switches['target-doc']))) {
 		throw new SettingsError(`configuration target-doc=${config.switches['target-doc']} does not match the target-document rename`, { code: 'AG_RENAME_SCOPE' })
@@ -1158,13 +1158,13 @@ const rename_target_document = (options = {}) => {
 const rename_target_doc = rename_target_document
 
 const migrate_workspace = (options = {}) => {
+	const active_host = detect_host(options)
 	const repo_root = node_path.resolve(options.repo_root || process.cwd())
 	const fs_api = options.fs || node_fs
 	const git_run = args => (options.git_runner ? options.git_runner(args) : git_command(repo_root, args))
 	try { git_run(['rev-parse', '--show-toplevel']) } catch { throw new SettingsError('workspace migration requires a Git repository', { code: 'AG_WORKSPACE_GIT' }) }
 	if (String(git_run(['status', '--porcelain'])).trim()) throw new SettingsError('workspace migration requires a clean working tree', { code: 'AG_WORKSPACE_DIRTY' })
 	const config_path = node_path.join(repo_root, 'ag.json')
-	const active_host = options.active_host || options.explicit_host || detect_host(options)
 	const config = read_json_config(config_path, { ...options, repo_root, active_host })
 	const paths = workspace_paths(config)
 	if (!paths.workspace) throw new SettingsError('workspace migration requires workspace-dir to be set first', { code: 'AG_WORKSPACE_MISSING' })
