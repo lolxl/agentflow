@@ -12,7 +12,7 @@ not a general guarantee that code or a model claim is honest.
 
 ## Active scripts
 
-- **`round-linter.js`** — host-neutral, no-AI validation of a completed round. Its `cross_check` gate refuses a completed implementation unless the named current-Ask report is a bounded regular file with standard worker boundaries, exactly one PASS each for Outcome, Minimality, and Conformance plus one overall PASS verdict, and the same final implementation commit recorded by the round. Matching pipeline acceptance may supply that report. Exact current-Ask `skip-review: <accepted tradeoff>` skips this review only. A valid report stamp with a different model or effort produces a warning. The gate does not request a model review for first-time Agentflow bookkeeping when Git proves that the repository has no product files and only Agentflow records, the bootstrap `ag.json`, and `.gitignore` were created.
+- **`round-linter.js`** — host-neutral, no-AI validation of a completed round. Its `cross_check` gate refuses a completed implementation unless the named current-Ask report is a bounded regular file with standard worker boundaries, exactly one PASS each for Outcome, Minimality, and Conformance plus one overall PASS verdict, and the same final implementation commit recorded by the round. Matching pipeline acceptance may supply that report. Exact current-Ask `skip-review: <accepted tradeoff>` skips this review only. A valid report stamp with a different model or effort produces a warning. The gate does not request a model review for first-time Agentflow bookkeeping when Git proves that the repository has no product files and only Agentflow records, the bootstrap `ag.json`, and `.gitignore` were created. A first Reply also stays inside Git changes since the current Ask, so activation or notebook/STATUS-only updates do not pull every tracked product file into scope.
 
 - **`terminal-preflight.js`** — coordinator-run wrapper around the complete round linter. The Reply writer runs the same candidate check under its existing lock before notebook replacement and optional draft consumption. `notebook-write.js --input-stdin` accepts the complete WIP or Reply without creating a named draft file; the existing `--input <draft>` route remains compatible and consumes the unchanged draft after success. Run this wrapper before the terminal record commit; it prints every check and blocks terminal completion unless all required facts pass. The Stop hook independently checks the completed round again.
 
@@ -93,7 +93,15 @@ not a general guarantee that code or a model claim is honest.
 
 - **`install-hook.js`** — installs or removes Stop hooks for every registered
   host (Claude Code, Codex, and grok-bot / Cursor) and the project pre-commit
-  guard, preserving backups and avoiding duplicate entries.
+  guard, preserving backups and avoiding duplicate entries. The Stop command
+  is a project-local locator (`.agentflow/stop-hook.js`) that resolves the
+  skill at hook time through `AGENTFLOW_SKILL_DIR`, then that host's
+  `skillRoot()`. It does not bake the directory that ran `agf init`. If that
+  copy was ephemeral, later turns still need `AGENTFLOW_SKILL_DIR` or the
+  host skill root to exist. A missing skill warns and exits 0 so the host
+  session is not bricked.
+
+- **`skill-dir.js`** — shared skill locator used by the Stop-hook wrapper.
 
 - **`setup.js`** — checks Node, Git, the skill files, the user's `agf()` and `agf-looper()` shell functions, and `AGF_OPEN`; `--fix` prefers usable `$HOME/.agents/...` then each registered host skill root (`$HOME/.codex/...`, `$HOME/.claude/...`, `$HOME/.cursor/...`) in registry order, then falls back to the verified active skill directory for a plugin-only installation without guessing cache paths. It accepts an existing managed shortcut to any usable matching installation despite indentation differences and replaces only a recognised stale Agentflow shortcut.
 

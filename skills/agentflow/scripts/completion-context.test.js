@@ -61,6 +61,77 @@ test('post-closure source changes still require a new review', () => {
 	assert.ok(!result.git_paths.committed.includes('src.js'));
 });
 
+const first_reply_fixture = () => {
+	const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agentflow-first-reply-')));
+	git(root, ['init', '-q']);
+	git(root, ['config', 'user.name', 'Agentflow Test']);
+	git(root, ['config', 'user.email', 'agentflow@example.invalid']);
+	write(root, 'src/app.js', 'module.exports = 1;\n');
+	commit(root, 'existing product');
+	const config = ag_settings.make_template('grok-bot');
+	config.switches['target-doc'] = '.agentflow/devlog.md';
+	config.switches['workspace-dir'] = '.agentflow';
+	write(root, 'ag.json', `${JSON.stringify(config, null, 2)}\n`);
+	write(root, '.agentflow/devlog.md', '# STATUS\n\nProject: test\n\n---\n\n# \u2192 Ask / A-001\n\n+ godev\n');
+	commit(root, 'agentflow init');
+	return root;
+};
+
+test('first-reply activation on a repo with product files does not treat the whole tree as in-scope', () => {
+	const root = first_reply_fixture();
+	write(root, '.agentflow/devlog.md', '# STATUS\n\nProject: test\nHost: grok-bot\n\n---\n\n# \u2192 Ask / A-001\n\n+ godev\n');
+	const devlog_text = fs.readFileSync(path.join(root, '.agentflow/devlog.md'), 'utf8');
+	const result = collect({ project_root: root, notebook_path: '.agentflow/devlog.md', devlog_text });
+
+	assert.equal(result.review_decision.status, 'not-requested');
+	assert.ok(!result.review_decision.changed_files.includes('src/app.js'));
+	assert.ok(result.review_decision.changed_files.every(file =>
+		file === 'ag.json' || file === '.gitignore' || file.startsWith('.agentflow/')
+	));
+});
+
+test('first-reply still requires review when a product file changed after the Ask', () => {
+	const root = first_reply_fixture();
+	write(root, 'src/app.js', 'module.exports = 2;\n');
+	const devlog_text = fs.readFileSync(path.join(root, '.agentflow/devlog.md'), 'utf8');
+	const result = collect({ project_root: root, notebook_path: '.agentflow/devlog.md', devlog_text });
+
+	assert.equal(result.review_decision.status, 'required');
+	assert.ok(result.git_paths.working.includes('src/app.js') || result.git_paths.changed.includes('src/app.js'));
+});
+
+test('first-reply requires review when the Ask is uncommitted and product commits exist', () => {
+	const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agentflow-first-reply-uncommitted-')));
+	git(root, ['init', '-q']);
+	git(root, ['config', 'user.name', 'Agentflow Test']);
+	git(root, ['config', 'user.email', 'agentflow@example.invalid']);
+	write(root, 'src/app.js', 'module.exports = 1;\n');
+	commit(root, 'existing product');
+	const config = ag_settings.make_template('grok-bot');
+	config.switches['target-doc'] = '.agentflow/devlog.md';
+	config.switches['workspace-dir'] = '.agentflow';
+	write(root, 'ag.json', `${JSON.stringify(config, null, 2)}\n`);
+	write(root, '.agentflow/devlog.md', '# STATUS\n\nProject: test\n\n---\n\n# \u2192 Ask / A-001\n\n+ godev\n');
+	const devlog_text = fs.readFileSync(path.join(root, '.agentflow/devlog.md'), 'utf8');
+	const result = collect({ project_root: root, notebook_path: '.agentflow/devlog.md', devlog_text });
+
+	assert.equal(result.review_decision.status, 'required');
+	assert.match(result.review_decision.reason, /Ask baseline is missing/i);
+	assert.ok(!result.git_paths.committed.includes('src/app.js'));
+});
+
+test('first-reply still requires review when a product change was committed after the Ask', () => {
+	const root = first_reply_fixture();
+	write(root, 'src/app.js', 'module.exports = 3;\n');
+	commit(root, 'product change after ask');
+	const devlog_text = fs.readFileSync(path.join(root, '.agentflow/devlog.md'), 'utf8');
+	const result = collect({ project_root: root, notebook_path: '.agentflow/devlog.md', devlog_text });
+
+	assert.equal(result.review_decision.status, 'required');
+	assert.ok(result.git_paths.committed.includes('src/app.js'));
+	assert.ok(!result.git_paths.committed.includes('README.md'));
+});
+
 test('non-ASCII Agentflow record paths remain inside the record boundary', () => {
 	const root = cleanup_fixture();
 	const record_path = '.agentflow/artifacts/archives/runlog-luna 大盤點.md';
