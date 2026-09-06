@@ -462,7 +462,6 @@ const profile_has_tier = (profile, tier) => tier_names_for_profile(profile).incl
 const pipeline_profile_eligible = (config, profile, active_host = '') => {
 	if (!profile) return false
 	if (config.switches['cli-provider'] === 'on') return true
-	if (host_provider.registered_id(active_host) === 'grok-bot') return false
 	const host_family = family_for_host(active_host)
 	return !active_host || !host_family || profile_family(profile) === host_family
 }
