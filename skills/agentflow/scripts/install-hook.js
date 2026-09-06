@@ -15,6 +15,12 @@
 //   codex    project ./.codex/hooks.json       global ~/.codex/hooks.json
 //   grok-bot project ./.cursor/hooks.json      global ~/.cursor/hooks.json
 //
+// The installed Stop command points at a project-local locator
+// (.agentflow/stop-hook.js), not the skill copy that ran `agf init`.
+// That matters when init ran from an ephemeral directory such as /tmp.
+// At hook time the locator uses AGENTFLOW_SKILL_DIR, then the host
+// skillRoot() paths under ~/.cursor, ~/.claude, ~/.codex, or ~/.agents.
+//
 // Writing a project file for a host that never runs in this repo is harmless:
 // each CLI only reads its own file, and the hook itself no-ops without a
 // devlog.md. Any other coding client (e.g. opencode) that can run a command
@@ -29,8 +35,18 @@ const node_os = require('node:os');
 const node_path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const host_provider = require('./host-provider');
+const skill_dir = require('./skill-dir');
 
-const hook_command_for = host => `node "${node_path.join(__dirname, 'stop-hook.js')}" --host ${host}`;
+const locator_path_for = (cwd = process.cwd()) => skill_dir.locator_path_for(cwd);
+
+const hook_command_for = (host, cwd = process.cwd()) => `node "${locator_path_for(cwd)}" --host ${host}`;
+
+const write_locator = cwd => {
+  const locator_path = locator_path_for(cwd);
+  node_fs.mkdirSync(node_path.dirname(locator_path), { recursive: true });
+  node_fs.writeFileSync(locator_path, skill_dir.locator_script_source());
+  return locator_path;
+};
 
 // The git pre-commit devlog guard (I-039). Project scope only — git hooks are
 // per-repo; worktrees share the main checkout's hooks, so one install covers all.
@@ -40,19 +56,27 @@ const guard_script = `#!/bin/sh\n# ${guard_marker} — blocks committing root de
 
 const HOSTS = host_provider.hook_hosts();
 
-const parse_owned_command = command => {
+const parse_owned_command = (command, cwd = process.cwd()) => {
   if (typeof command !== 'string') return null;
 
   const match = command.trim().match(host_provider.hook_command_host_pattern());
   if (!match) return null;
 
-  return { script: node_path.resolve(match[2] || match[3]), host: match[4] };
+  return { script: node_path.resolve(cwd, match[2] || match[3]), host: match[4] };
 };
 
-const is_our_command = (command, host) => {
-  const parsed = parse_owned_command(command);
-  const installed_script = node_path.resolve(node_path.join(__dirname, 'stop-hook.js'));
-  return parsed !== null && parsed.host === host && parsed.script === installed_script;
+const is_skill_tree_stop_hook = script => {
+  const suffix = `${node_path.sep}${node_path.join('skills', 'agentflow', 'scripts', 'stop-hook.js')}`;
+  return script.endsWith(suffix);
+};
+
+const is_our_command = (command, host, cwd = process.cwd()) => {
+  const parsed = parse_owned_command(command, cwd);
+  if (parsed === null || parsed.host !== host) return false;
+  const script = canonical_path(parsed.script);
+  const locator = canonical_path(locator_path_for(cwd));
+  const installed_script = canonical_path(node_path.join(__dirname, 'stop-hook.js'));
+  return script === locator || script === installed_script || is_skill_tree_stop_hook(script);
 };
 
 const canonical_path = value => {
@@ -68,7 +92,7 @@ const canonical_path = value => {
 };
 
 const is_project_worktree_command = (command, host, cwd) => {
-  const parsed = parse_owned_command(command);
+  const parsed = parse_owned_command(command, cwd);
   if (parsed === null || parsed.host !== host) return false;
   const worktrees = `${canonical_path(node_path.resolve(cwd, '.worktrees'))}${node_path.sep}`;
   const suffix = node_path.join('skills', 'agentflow', 'scripts', 'stop-hook.js');
@@ -128,8 +152,8 @@ const backup = config_path => {
 
 const add_hook = (config, host, { scope = 'project', cwd = process.cwd() } = {}) => {
   const stop_entries = Array.isArray(config.hooks && config.hooks.Stop) ? config.hooks.Stop : [];
-  const desired_command = hook_command_for(host);
-  const owned = command => is_our_command(command, host)
+  const desired_command = hook_command_for(host, cwd);
+  const owned = command => is_our_command(command, host, cwd)
     || (scope === 'project' && is_project_worktree_command(command, host, cwd));
   let kept_one = false;
   const next_entries = stop_entries.flatMap(entry => {
@@ -163,7 +187,7 @@ const remove_hook = (config, host, { scope = 'project', cwd = process.cwd() } = 
       continue;
     }
 
-    const hooks = entry.hooks.filter(hook => !(is_our_command(hook.command, host)
+    const hooks = entry.hooks.filter(hook => !(is_our_command(hook.command, host, cwd)
       || (scope === 'project' && is_project_worktree_command(hook.command, host, cwd))));
     if (hooks.length === entry.hooks.length) {
       kept.push(entry);
@@ -196,6 +220,7 @@ const remove_hook = (config, host, { scope = 'project', cwd = process.cwd() } = 
 };
 
 const apply_to_host = (host, scope, off, say, cwd = process.cwd()) => {
+  if (!off) write_locator(cwd);
   const config_path = config_path_for(host, scope, cwd);
   const config = read_config(config_path);
   const { config: next_config, changed } = off ? remove_hook(config, host, { scope, cwd }) : add_hook(config, host, { scope, cwd });
@@ -278,7 +303,7 @@ const install = ({ scope = 'project', off = false, quiet = false, hosts = HOSTS,
 
   if (!off) nudge_setup();
 
-  hosts.forEach(host => output(`Hook command (${host}): ${hook_command_for(host)}`));
+  hosts.forEach(host => output(`Hook command (${host}): ${hook_command_for(host, cwd)}`));
 };
 
 const inspect = ({ cwd = process.cwd(), scope = 'project', hosts = HOSTS } = {}) => {
@@ -307,6 +332,6 @@ const main = () => {
   install(options);
 };
 
-module.exports = { install, inspect, config_path_for, apply_guard };
+module.exports = { install, inspect, config_path_for, apply_guard, hook_command_for, locator_path_for, write_locator };
 
 if (require.main === module) main();

@@ -30,7 +30,7 @@ One term to know before reading: AI = the coding agent you are running now, for 
 
 2. Type the single word `godev` and press enter.
 
-3. **First time in a project:** the AI runs `agf init` once. This one command creates `.agentflow/devlog.md`, root `ag.json`, the three ignore entries, and the project safety hooks. It never creates a Git repository for you. The JSON file is the only startup configuration file and tells Agentflow where its private workspace is. The public controls use kebab-case: `target-doc: .agentflow/devlog.md`, `workspace-dir: .agentflow`, `cli-provider: off|on`, `auto-reply: on`, `lang: en`, `streams: ask|always|off`, `ask-names: off`, `allow-ag: on`, `metrics: off`, and `large-work-minutes: 120`.
+3. **First time in a project:** the AI runs `agf init` once. This one command creates `.agentflow/devlog.md`, root `ag.json`, the three ignore entries, and the project safety hooks. It never creates a Git repository for you. The JSON file is the only startup configuration file and tells Agentflow where its private workspace is. The public controls use kebab-case: `target-doc: .agentflow/devlog.md`, `workspace-dir: .agentflow`, `cli-provider: off|on`, `auto-reply: on`, `lang: en`, `streams: ask|always|off`, `ask-names: off`, `allow-ag: on`, `metrics: off`, and `large-work-minutes: 120`. If init ran from a temporary skill copy, the Stop hook still looks up the skill at runtime (`AGENTFLOW_SKILL_DIR` or the host skill root). Install the skill under `~/.cursor/skills/agentflow` or set that variable so later turns can find it.
 
 		The AI reads and validates the version-7 `ag.json` (`"schema-version": 7`) before using its settings. The same kebab-case names are used in the public JSON and in setting requests; older spellings are rejected without translation.
 
@@ -140,7 +140,7 @@ The switches, `pipeline-roles`, and ordered `external-workers` profiles live in 
 
 - **`ask-names`** — whether new request headings include the writer's name. Legal values are `on` and `off`.
 
-- **`cli-provider`** — whether delegated work stays on the host's CLI family (`off`) or may use a different available family (`on`). The unified external worker always runs the command; the JSON file cannot supply a command path.
+- **`cli-provider`** — whether delegated work stays on the host's CLI family (`off`) or may use a different available family (`on`). The unified external worker always runs the command; the JSON file cannot supply a command path. On Grok Bot / Cursor, `off` is the host-only path: no Codex or Claude CLI is required, and `spawnWorker` stays a stub that does not launch a cloud agent. The default template still ships `on` with those CLI profiles because the coordinator is not itself a CLI worker. If `cli-provider` is `on` and no executable is available, settings validation warns.
 
 - **External command route:** every delegated task uses the unified external worker with a validated literal command in an independent clone.
 

@@ -95,6 +95,16 @@ const current_round_info = devlog_text => {
 
 const escape_regexp = value => value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 
+const first_ask_baseline = (project_root, notebook_path, ask_id) => {
+  if (typeof ask_id !== 'string' || ask_id.length === 0) return '';
+  const ask_commit = git(project_root, ['log', '-1', '--format=%H', '-S', `# → Ask / ${ask_id}`, '--', notebook_path]);
+  if (!/^[0-9a-f]{40}$/u.test(ask_commit)) return '';
+  const parent = git(project_root, ['rev-parse', '--verify', `${ask_commit}^`]);
+  if (/^[0-9a-f]{40}$/u.test(parent)) return parent;
+  const empty_tree = git(project_root, ['hash-object', '-t', 'tree', '/dev/null']);
+  return /^[0-9a-f]{40}$/u.test(empty_tree) ? empty_tree : '';
+};
+
 const completed_cleanup_boundary = (project_root, current_round, workspace_dir, committed_files) => {
   const ask_text = current_round?.ask_text ?? '';
   if (!/\bclean(?:up|ed|ing)?\b/iu.test(ask_text) || typeof workspace_dir !== 'string' || workspace_dir.length === 0) return undefined;
@@ -283,11 +293,7 @@ const review_decision = (project_root, notebook_path, devlog_text, workspace_dir
   }
   const ask_text = current_round.ask_text ?? '';
   const prior_replies = git_facts.parsed.rounds.slice(0, current_round.index).filter(round => round.reply_text.length > 0).map(round => round.id);
-  let changed_files = git_facts.changed_files;
-  if (prior_replies.length === 0) {
-    const committed = git(project_root, ['ls-files']).split('\n').filter(Boolean);
-    changed_files = [...new Set([...committed, ...git_facts.working_files])];
-  }
+  const changed_files = git_facts.changed_files;
   const record_files = [
     notebook_path,
     node_path.posix.join(notebook_directory, `.${notebook_name}.audit.md`),
@@ -358,7 +364,7 @@ const collect = ({
   const working_files = parse_porcelain_paths(git_status).filter(file => !ignored.has(file));
   const baseline_round = current_round?.index === undefined ? undefined : parsed.rounds.slice(0, current_round.index).filter(round => round.reply_text.length > 0).at(-1);
   const baseline = baseline_round === undefined
-    ? ''
+    ? first_ask_baseline(root, notebook_path, ask_id)
     : git(root, ['log', '-1', '--format=%H', '-S', `# ← Reply / ${baseline_round.id}`, '--', notebook_path]);
   const baseline_committed_files = /^[0-9a-f]{40}$/u.test(baseline)
     ? git(root, ['diff', '--name-only', `${baseline}..HEAD`]).split('\n').filter(Boolean)

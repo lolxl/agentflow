@@ -28,7 +28,7 @@
 
 2. 輸入一個字 `godev`，按下 enter。
 
-3. **在一個專案裡第一次使用時：** AI 只執行一次 `agf init`。這一個指令會建立 `.agentflow/devlog.md`、專案根目錄的 `ag.json`、三個忽略項目，以及專案安全 hooks。它絕不會替你建立 Git repository。`ag.json` 是唯一的啟動設定來源，告訴 Agentflow 私有工作區的位置。公開控制詞使用 kebab-case（單字之間用連字號）：`target-doc: .agentflow/devlog.md`、`workspace-dir: .agentflow`、`cli-provider: off|on`、`auto-reply: on`、`lang: en`、`streams: ask|always|off`、`ask-names: off`、`allow-ag: on`、`metrics: off` 和 `large-work-minutes: 120`。
+3. **在一個專案裡第一次使用時：** AI 只執行一次 `agf init`。這一個指令會建立 `.agentflow/devlog.md`、專案根目錄的 `ag.json`、三個忽略項目，以及專案安全 hooks。它絕不會替你建立 Git repository。`ag.json` 是唯一的啟動設定來源，告訴 Agentflow 私有工作區的位置。公開控制詞使用 kebab-case（單字之間用連字號）：`target-doc: .agentflow/devlog.md`、`workspace-dir: .agentflow`、`cli-provider: off|on`、`auto-reply: on`、`lang: en`、`streams: ask|always|off`、`ask-names: off`、`allow-ag: on`、`metrics: off` 和 `large-work-minutes: 120`。若 init 是從暫時的 skill 目錄跑的，Stop hook 仍會在執行時查找 skill（`AGENTFLOW_SKILL_DIR` 或該 host 的 skill root）。請把 skill 裝到 `~/.cursor/skills/agentflow`，或設定該變數，後續回合才能找到它。
 
 		AI 會在使用設定前讀取並驗證 v7 `ag.json`（`"schema-version": 7`）。公開 JSON 和設定請求使用相同的 kebab-case 名稱；舊拼法會被拒絕，不會自動轉換。
 
@@ -120,7 +120,7 @@
 
 	- **`ask-names`** — 每個請求的標題要不要顯示是誰寫的？`off`（預設值）只顯示編號，像 `# → Ask / A-018`。`on` 會加上提問者的名字，像 `# → Ask / A-018 (John)` — 好幾個人共用同一本筆記本時很有用。AI 會優先用你在請求裡自己說的名字；沒說的話用你的 Git 名字；最後才用電腦的登入帳號名。
 
-		- **`cli-provider`** — delegated work 使用哪個 CLI 家族的單一開關：`off` 固定使用主機家族，`on` 允許使用另一個可用家族。兩者都只透過 unified external worker 執行。
+		- **`cli-provider`** — delegated work 使用哪個 CLI 家族的單一開關：`off` 固定使用主機家族，`on` 允許使用另一個可用家族。兩者都只透過 unified external worker 執行。在 Grok Bot / Cursor 上，`off` 就是只走宿主、不需要 Codex 或 Claude CLI 的路徑；`spawnWorker` 仍是 stub，不會啟動 cloud agent。預設模板仍是 `on` 並帶著那些 CLI profiles，因為 coordinator 本身不是 CLI worker。若 `cli-provider` 為 `on` 卻找不到可執行檔，設定驗證會提出警告。
 
 
 			- 設定檔只驗證固定執行檔是否可用，不能提供命令路徑或 shell 片段；選定家族不可用時，記錄限制並停止或使用明確允許的 fallback。

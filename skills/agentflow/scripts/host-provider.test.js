@@ -107,6 +107,15 @@ test('ag-settings templates and STATUS accept grok-bot as a registered host', ()
 	const config = settings.make_template('cursor')
 	assert.equal(config.switches['cli-provider'], 'on')
 	assert.equal(settings.validate_config(config, { active_host: 'grok-bot', executables: ['codex', 'claude'] }).valid, true)
+	const missing_cli = settings.validate_config(config, { active_host: 'grok-bot', executables: [] })
+	assert.equal(missing_cli.valid, true)
+	assert.match(missing_cli.warnings.join('; '), /cli-provider=on has no available CLI executable/)
+	assert.match(missing_cli.warnings.join('; '), /cli-provider: off/)
+	const bot_only = JSON.parse(JSON.stringify(config))
+	bot_only.switches['cli-provider'] = 'off'
+	const bot_only_result = settings.validate_config(bot_only, { active_host: 'grok-bot', executables: [] })
+	assert.equal(bot_only_result.valid, true)
+	assert.doesNotMatch(bot_only_result.warnings.join('; '), /no available CLI executable|no available external-worker/)
 	const status = settings.format_status({
 		project: 'demo',
 		notebook: 'devlog.md',
@@ -148,6 +157,7 @@ test('Chef, TEAM, and quiet-hours stay out of core host files', () => {
 		'skills/agentflow/scripts/ag-settings.js',
 		'skills/agentflow/scripts/stop-hook.js',
 		'skills/agentflow/scripts/install-hook.js',
+		'skills/agentflow/scripts/skill-dir.js',
 		'skills/agentflow/scripts/setup.js',
 		'skills/agentflow/scripts/resume-intake.js',
 		'skills/agentflow/scripts/agf.js',
