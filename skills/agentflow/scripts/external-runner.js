@@ -277,16 +277,13 @@ const activity_file_identity = file_path => {
   }
 }
 
-const host_markers = Object.freeze({
-  codex: ['CODEX_SESSION_ID', 'CODEX_THREAD_ID', 'CODEX_CI', 'CODEX_SANDBOX', 'CODEX_CLI'],
-  claude: ['CLAUDE_PROJECT_DIR', 'CLAUDE_SESSION_ID', 'CLAUDE_CODE', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SSE_PORT', 'CLAUDE_CLI'],
-})
+const host_provider = require('./host-provider')
 
 const worker_environment = (command, requested_env) => {
   const environment = { ...(requested_env || process.env) }
   const executable = node_path.basename(command.executable)
-  const opposite = executable === 'claude' ? 'codex' : executable === 'codex' ? 'claude' : null
-  if (opposite !== null) for (const marker of host_markers[opposite]) delete environment[marker]
+  const opposite = host_provider.opposite_host(executable)
+  if (opposite) for (const marker of host_provider.host_markers[opposite] || []) delete environment[marker]
   return environment
 }
 

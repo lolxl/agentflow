@@ -9,6 +9,7 @@
 const node_fs = require('node:fs')
 const node_path = require('node:path')
 const node_child_process = require('node:child_process')
+const host_provider = require('./host-provider')
 
 const schema_version = 7
 const tier_names = Object.freeze(['best', 'better', 'basic', 'cheap'])
@@ -29,10 +30,7 @@ const pipeline_role_defaults = Object.freeze({
 const switch_names = Object.freeze(['target-doc', 'workspace-dir', 'cli-provider', 'auto-reply', 'lang', 'streams', 'ask-names', 'allow-ag', 'metrics', 'large-work-minutes'])
 const changeable_switch_names = Object.freeze(switch_names.filter(key => key !== 'target-doc'))
 
-const host_markers = Object.freeze({
-	codex: ['CODEX_SESSION_ID', 'CODEX_THREAD_ID', 'CODEX_CI', 'CODEX_SANDBOX', 'CODEX_CLI'],
-	claude: ['CLAUDE_PROJECT_DIR', 'CLAUDE_SESSION_ID', 'CLAUDE_CODE', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SSE_PORT', 'CLAUDE_CLI'],
-})
+const host_markers = host_provider.host_markers
 
 const role_tiers = Object.freeze({
 	requirements: 'better',
@@ -81,41 +79,34 @@ class SettingsError extends Error {
 
 const error_from = (message, errors, warnings, code) => new SettingsError(message, { errors, warnings, code })
 
-const normalise_host = host => {
-	if (host === 'codex' || host === 'claude') return host
-	throw new SettingsError('active host must be codex or claude', { code: 'AG_HOST_INVALID' })
+const wrap_host_error = error => {
+	if (error instanceof SettingsError) throw error
+	throw new SettingsError(error.message, { code: error.code || 'AG_HOST_INVALID' })
 }
 
-const marker_is_set = value => value !== undefined && value !== null && value !== '' && value !== '0' && value !== 'false'
+const normalise_host = host => {
+	try {
+		return host_provider.normalise_host(host)
+	} catch (error) {
+		wrap_host_error(error)
+	}
+}
+
+const marker_is_set = host_provider.marker_is_set
 
 const detect_host_info = (options = {}) => {
-	const explicit_host = options.explicit_host !== undefined
-		? options.explicit_host
-		: options.active_host !== undefined
-			? options.active_host
-			: options.coordinator_host !== undefined
-				? options.coordinator_host
-				: options.host
-
-	if (explicit_host !== undefined) {
-		return { host: normalise_host(explicit_host), source: 'explicit coordinator identity' }
+	try {
+		const info = host_provider.detect_host_info(options)
+		return { host: info.host, source: info.source }
+	} catch (error) {
+		wrap_host_error(error)
 	}
-
-	const env = options.env === undefined ? process.env : options.env
-	const found = Object.keys(host_markers).filter(host => host_markers[host].some(name => marker_is_set(env && env[name])))
-
-	if (found.length === 1) return { host: found[0], source: 'host-owned runtime marker' }
-	if (found.length > 1) {
-		throw new SettingsError('active host is ambiguous: both supported host families supplied runtime markers', { code: 'AG_HOST_AMBIGUOUS' })
-	}
-
-	throw new SettingsError('active host is unknown: no supported host identity was supplied', { code: 'AG_HOST_UNKNOWN' })
 }
 
 const detect_host = options => detect_host_info(options).host
 
-const family_for_host = host => host === 'codex' ? 'codex' : host === 'claude' ? 'claude' : ''
-const opposite_host = host => host === 'codex' ? 'claude' : host === 'claude' ? 'codex' : ''
+const family_for_host = host => host_provider.family_for_host(host)
+const opposite_host = host => host_provider.opposite_host(host)
 
 const host_template_values = {
 	codex: {
@@ -196,6 +187,47 @@ const host_template_values = {
 					better: 'gpt-5.6-terra/high',
 					basic: 'gpt-5.6-luna/max',
 					cheap: 'gpt-5.4/medium',
+				},
+			},
+		],
+	},
+	'grok-bot': {
+		'schema-version': schema_version,
+		switches: {
+			'target-doc': 'devlog.md',
+			'cli-provider': 'on',
+			'auto-reply': 'on',
+			lang: 'en',
+			streams: 'ask',
+			'ask-names': 'on',
+			'allow-ag': 'on',
+			metrics: 'off',
+			'large-work-minutes': 120,
+		},
+		'pipeline-roles': pipeline_role_defaults,
+		'external-workers': [
+			{
+				id: 'codex-default',
+				command: ['codex', 'exec'],
+				priority: 3,
+				family: 'codex',
+				tiers: {
+					best: 'gpt-5.6-sol/low',
+					better: 'gpt-5.6-terra/high',
+					basic: 'gpt-5.6-luna/max',
+					cheap: 'gpt-5.4/medium',
+				},
+			},
+			{
+				id: 'claude-default',
+				command: ['claude', '-p'],
+				priority: 3,
+				family: 'claude',
+				tiers: {
+					best: 'claude-opus-5/high',
+					better: 'claude-opus-4-6/high',
+					basic: 'claude-sonnet-5/high',
+					cheap: 'haiku/high',
 				},
 			},
 		],
@@ -427,7 +459,8 @@ const profile_has_tier = (profile, tier) => tier_names_for_profile(profile).incl
 const pipeline_profile_eligible = (config, profile, active_host = '') => {
 	if (!profile) return false
 	if (config.switches['cli-provider'] === 'on') return true
-	return !active_host || profile_family(profile) === family_for_host(active_host)
+	const host_family = family_for_host(active_host)
+	return !active_host || !host_family || profile_family(profile) === host_family
 }
 
 const validate_pipeline_roles = (config, warnings, errors, options = {}) => {
@@ -1003,6 +1036,7 @@ const carry_forward_card = ({ repo_root, old_notebook, new_notebook, fs_api = no
 }
 
 const rename_target_document = (options = {}) => {
+	const active_host = detect_host(options)
 	const repo_root = node_path.resolve(options.repo_root || process.cwd())
 	const old_notebook = relative_notebook_path(repo_root, options.old_notebook || options.from)
 	const new_notebook = relative_notebook_path(repo_root, options.new_notebook || options.to)
@@ -1049,7 +1083,6 @@ const rename_target_document = (options = {}) => {
 		if (unexpected.length > 0) throw new SettingsError(`target-document rename recovery found unrelated changes: ${unexpected.join(', ')}`, { code: 'AG_RENAME_DIRTY' })
 	}
 	const source_config_path = fs_api.existsSync(old_config_path) ? old_config_path : new_config_path
-	const active_host = options.active_host || options.explicit_host || detect_host(options)
 	const config = read_json_config(source_config_path, { ...options, repo_root, active_host })
 	if ((!resuming && config.switches['target-doc'] !== old_notebook) || (resuming && ![old_notebook, new_notebook].includes(config.switches['target-doc']))) {
 		throw new SettingsError(`configuration target-doc=${config.switches['target-doc']} does not match the target-document rename`, { code: 'AG_RENAME_SCOPE' })
@@ -1125,13 +1158,13 @@ const rename_target_document = (options = {}) => {
 const rename_target_doc = rename_target_document
 
 const migrate_workspace = (options = {}) => {
+	const active_host = detect_host(options)
 	const repo_root = node_path.resolve(options.repo_root || process.cwd())
 	const fs_api = options.fs || node_fs
 	const git_run = args => (options.git_runner ? options.git_runner(args) : git_command(repo_root, args))
 	try { git_run(['rev-parse', '--show-toplevel']) } catch { throw new SettingsError('workspace migration requires a Git repository', { code: 'AG_WORKSPACE_GIT' }) }
 	if (String(git_run(['status', '--porcelain'])).trim()) throw new SettingsError('workspace migration requires a clean working tree', { code: 'AG_WORKSPACE_DIRTY' })
 	const config_path = node_path.join(repo_root, 'ag.json')
-	const active_host = options.active_host || options.explicit_host || detect_host(options)
 	const config = read_json_config(config_path, { ...options, repo_root, active_host })
 	const paths = workspace_paths(config)
 	if (!paths.workspace) throw new SettingsError('workspace migration requires workspace-dir to be set first', { code: 'AG_WORKSPACE_MISSING' })
@@ -1310,7 +1343,7 @@ const status_field_order = ['Project:', 'Notebook:', 'Current commit:', 'Tests/s
 
 const status_stream_pattern = /^stream:\s+([a-z0-9][a-z0-9-]*)\s+—\s+active\s+—\s+([^\s]+\.devlog\.md)$/u
 const status_rename_pattern = /^Renamed:\s+([^\s—]+\.md)\s+→\s+([^\s—]+\.md)\s+\((\d{4}-\d{2}-\d{2})\)\.?$/u
-const status_configuration_pattern = new RegExp(`^Configuration:\\s+((?:[A-Za-z0-9_-]+\\/)*ag\\.json)\\s+—\\s+schema v${schema_version};\\s+(validated|blocked|invalid|missing|unvalidated)\\s+for\\s+(codex|claude)\\s+this round\\.$`, 'u')
+const status_configuration_pattern = new RegExp(`^Configuration:\\s+((?:[A-Za-z0-9_-]+\\/)*ag\\.json)\\s+—\\s+schema v${schema_version};\\s+(validated|blocked|invalid|missing|unvalidated)\\s+for\\s+(${host_provider.status_host_pattern()})\\s+this round\\.$`, 'u')
 
 const status_field_value = (line, field) => line.slice(field.length).trim()
 
@@ -1671,7 +1704,7 @@ const format_settings_display = (config, options = {}) => {
 
 const settings_display = format_settings_display
 
-const cli_usage = `usage: node ag-settings.js <init|validate|show|change|tier|rename|migrate-workspace> [options]\n\noptions:\n  --repo <path>       repository root (default: current directory)\n  --notebook <path>   applicable notebook (default: devlog.md)\n  --host <codex|claude>  explicit coordinator host for tests or integration\n  --set <key: value>  one setting change; may be repeated\n\nchange also accepts key: value arguments after the repository options.\nrename accepts --from <old-notebook> and --to <new-notebook> and performs the required two commits.\nmigrate-workspace moves tracked legacy Agentflow records after workspace-dir is set.`
+const cli_usage = `usage: node ag-settings.js <init|validate|show|change|tier|rename|migrate-workspace> [options]\n\noptions:\n  --repo <path>       repository root (default: current directory)\n  --notebook <path>   applicable notebook (default: devlog.md)\n  --host <${host_provider.known_host_text()}>  explicit coordinator host for tests or integration\n  --set <key: value>  one setting change; may be repeated\n\nchange also accepts key: value arguments after the repository options.\nrename accepts --from <old-notebook> and --to <new-notebook> and performs the required two commits.\nmigrate-workspace moves tracked legacy Agentflow records after workspace-dir is set.`
 
 const option_value = (args, index, name) => {
 	if (index + 1 >= args.length) throw new SettingsError(`${name} requires a value`, { code: 'AG_CLI_INVALID' })
@@ -1763,6 +1796,7 @@ module.exports = {
 	mandatory_pipeline_roles,
 	switch_names,
 	host_markers,
+	host_provider,
 	role_tiers,
 	role_aliases,
 	host_template_values,

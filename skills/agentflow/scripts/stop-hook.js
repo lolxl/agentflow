@@ -12,6 +12,7 @@ const node_fs = require('node:fs');
 const node_path = require('node:path');
 const { lint_round, parse_devlog } = require('./round-linter');
 const { collect } = require('./completion-context');
+const host_provider = require('./host-provider');
 
 const external_delegate_marker_pattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 
@@ -44,12 +45,15 @@ const main = () => {
   if (typeof external_delegate_marker === 'string' && external_delegate_marker_pattern.test(external_delegate_marker)) return 0;
 
   const host_index = process.argv.indexOf('--host');
-  const active_host = host_index >= 0 ? process.argv[host_index + 1] : undefined;
+  const requested_host = host_index >= 0 ? process.argv[host_index + 1] : undefined;
 
   // Installed hook commands MUST carry their owning host explicitly. Runtime
   // marker variables are not part of the shared Stop-hook payload. — I-043.
-  if (active_host !== 'codex' && active_host !== 'claude') {
-    throw new Error('Stop hook requires --host codex or --host claude');
+  let active_host;
+  try {
+    active_host = host_provider.normalise_host(requested_host);
+  } catch (error) {
+    throw new Error(`Stop hook requires --host ${host_provider.known_host_text().replace(/, /g, ' or --host ')}`);
   }
 
   // CLAUDE_PROJECT_DIR is Claude-Code-only; every host passes cwd on stdin.

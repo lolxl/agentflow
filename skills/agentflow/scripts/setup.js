@@ -15,6 +15,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const os = require('node:os')
 const { execFileSync } = require('node:child_process')
+const host_provider = require('./host-provider')
 
 const SKILL_DIR = path.resolve(__dirname, '..')
 const MARKER = path.join(SKILL_DIR, '.setup-checked')
@@ -39,7 +40,7 @@ const config_file_for = (shell, home) => {
 
 const shell_quote = value => `'${String(value).replaceAll("'", "'\\''")}'`
 
-const installation_roots = Object.freeze(['agents', 'codex', 'claude'])
+const installation_roots = Object.freeze(host_provider.install_roots())
 
 const agf_script_for = skill_dir => path.join(path.resolve(skill_dir), 'scripts', 'agf.js')
 

@@ -2,7 +2,9 @@
 
 **English** · [繁體中文](README.zh-tw.md)
 
-A file-logged way of working for AI coding agents (Claude Code, Codex, and compatible hosts).
+A file-logged way of working for AI coding agents (Claude Code, Codex, Cursor / Grok, and compatible hosts).
+
+This repository is the **lolxl port** of [`agfnow/agentflow`](https://github.com/agfnow/agentflow) (Apache-2.0; see `NOTICE`). Core protocol and scripts stay host-neutral. Host identity goes through a `HostProvider` registry (`skills/agentflow/scripts/host-provider.js`). Codex and Claude wrap the existing hosts; **grok-bot** (aliases `grok`, `cursor`) is the Cursor / Grok adapter. Unknown hosts stay blocked. There is no default-to-codex. Cursor-only Chef / TEAM / quiet-hours notes live in `skills/agentflow/providers/grok-bot/SKILL.md`, not in core.
 
 - **What it does:** the agent converses with you through a plain text record file (`devlog.md`) instead of the terminal. Every ask, answer, decision, and commit lands in the file, so the whole project history is auditable and any dead session recovers from the record.
 
@@ -13,13 +15,15 @@ A file-logged way of working for AI coding agents (Claude Code, Codex, and compa
 - **As a skill (Claude Code, Codex, and other hosts):**
 
 	```
-	npx skills add agfnow/agentflow
+	npx skills add lolxl/agentflow
+	# upstream source: npx skills add agfnow/agentflow
 	```
 
 - **As a Claude Code plugin (auto-updates on new releases):**
 
 	```
-	/plugin marketplace add agfnow/agentflow
+	/plugin marketplace add lolxl/agentflow
+	# upstream source: /plugin marketplace add agfnow/agentflow
 	```
 
 ## Verify installation

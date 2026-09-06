@@ -8,6 +8,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { execFileSync } = require('node:child_process')
 const settings = require('./ag-settings.js')
+const host_provider = require('./host-provider')
 
 const MAX_NOTEBOOK_BYTES = 64 * 1024
 const MAX_ASK_BYTES = 16 * 1024
@@ -118,7 +119,8 @@ const expected_large_owner_input = ({ repo_root, notebook_path, current_ask, cha
   return changes.length === expected.length && changes.every((line, index) => line === expected[index])
 }
 
-const collect_intake = ({ repo_root = process.cwd(), notebook_path, active_host = 'codex' } = {}) => {
+const collect_intake = ({ repo_root = process.cwd(), notebook_path, active_host } = {}) => {
+	active_host = host_provider.normalise_host(active_host)
 	const root = fs.realpathSync(repo_root)
 	const root_config_path = path.join(root, 'ag.json')
 	const root_config = settings.read_json_config(root_config_path, { repo_root: root, active_host })
@@ -149,17 +151,25 @@ const collect_intake = ({ repo_root = process.cwd(), notebook_path, active_host 
   }
 }
 
-const parse_args = argv => {
-	const result = { repo_root: process.cwd(), notebook_path: undefined, active_host: 'codex' }
+const parse_args = (argv, options = {}) => {
+	const result = { repo_root: process.cwd(), notebook_path: undefined, active_host: undefined }
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index]
-    if (!['--repo', '--notebook', '--host'].includes(flag) || index + 1 >= argv.length) throw new Error('usage: node resume-intake.js [--repo <path>] [--notebook <path>] [--host <codex|claude>]')
+    if (!['--repo', '--notebook', '--host'].includes(flag) || index + 1 >= argv.length) throw new Error(`usage: node resume-intake.js [--repo <path>] [--notebook <path>] [--host <${host_provider.known_host_text()}>]`)
     const value = argv[++index]
     if (flag === '--repo') result.repo_root = value
     if (flag === '--notebook') result.notebook_path = value
     if (flag === '--host') result.active_host = value
   }
-  if (!['codex', 'claude'].includes(result.active_host)) throw new Error('host must be codex or claude')
+  try {
+    result.active_host = result.active_host === undefined
+      ? host_provider.detect_host({ env: options.env === undefined ? process.env : options.env })
+      : host_provider.normalise_host(result.active_host)
+  } catch (error) {
+    throw new Error(error.code === 'AG_HOST_UNKNOWN'
+      ? 'host is unknown; pass --host or set AGENTFLOW_HOST to a registered host'
+      : (error.message || `host must be one of: ${host_provider.known_host_text()}`))
+  }
   return result
 }
 
@@ -167,7 +177,7 @@ const main = argv => {
   process.stdout.write(`${JSON.stringify(collect_intake(parse_args(argv)), null, 2)}\n`)
 }
 
-module.exports = { collect_intake, final_ask, expected_owner_input, status_block }
+module.exports = { collect_intake, final_ask, expected_owner_input, status_block, parse_args }
 
 if (require.main === module) {
   try {

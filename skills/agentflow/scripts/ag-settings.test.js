@@ -1265,6 +1265,60 @@ test('forwarding cards carry an ask into the renamed notebook during resolution'
 	}
 })
 
+test('rename and workspace migration canonicalise --host cursor and --host grok before Git or STATUS writes', () => {
+	for (const alias of ['cursor', 'grok']) {
+		const rename_repo = make_repo()
+		try {
+			const status = settings.format_status({ project: 'demo', notebook: 'devlog.md', notebook_kind: 'root', current_commit: 'initial', tests_scenarios: 'none', config_path: 'ag.json', host: 'grok-bot', validation: 'validated', proven: 'none', open: 'none', next: 'await', artifacts: 'none', archived_eras: 'none' })
+			fs.writeFileSync(path.join(rename_repo, 'devlog.md'), status)
+			settings.write_config_atomic(path.join(rename_repo, 'ag.json'), legacy_root_config('grok-bot'), { repo_root: rename_repo, active_host: 'grok-bot', ...all_executables })
+			git(rename_repo, ['init', '-b', 'main'])
+			git(rename_repo, ['config', 'user.email', 'test@example.com'])
+			git(rename_repo, ['config', 'user.name', 'Test'])
+			git(rename_repo, ['add', '-A'])
+			git(rename_repo, ['commit', '-m', 'initial'])
+			const before = git(rename_repo, ['rev-parse', 'HEAD']).trim()
+			settings.cli_main(['rename', '--repo', rename_repo, '--host', alias, '--from', 'devlog.md', '--to', 'notes.devlog.md'], { output() {} })
+			assert.notEqual(git(rename_repo, ['rev-parse', 'HEAD']).trim(), before)
+			assert.equal(git(rename_repo, ['rev-list', '--count', 'HEAD']).trim(), '3')
+			assert.equal(git(rename_repo, ['status', '--porcelain']).trim(), '')
+			const renamed = fs.readFileSync(path.join(rename_repo, 'notes.devlog.md'), 'utf8')
+			assert.match(renamed, /validated for grok-bot this round/)
+			assert.doesNotMatch(renamed, new RegExp(`validated for ${alias} this round`))
+			assert.equal(settings.validate_status_projection(renamed).valid, true)
+		} finally {
+			drop(rename_repo)
+		}
+
+		const migrate_repo = make_repo()
+		try {
+			const config_path = path.join(migrate_repo, 'ag.json')
+			const status = settings.format_status({ project: 'demo', notebook: 'devlog.md', notebook_kind: 'root', current_commit: 'initial', tests_scenarios: 'none', config_path: 'ag.json', host: 'grok-bot', validation: 'validated', proven: 'none', open: 'none', next: 'await', artifacts: 'none', archived_eras: 'devlog.archive.md' })
+			fs.writeFileSync(path.join(migrate_repo, 'devlog.md'), status)
+			fs.writeFileSync(path.join(migrate_repo, 'devlog.archive.md'), 'archive\n')
+			settings.write_config_atomic(config_path, legacy_root_config('grok-bot'), { repo_root: migrate_repo, active_host: 'grok-bot', ...all_executables })
+			git(migrate_repo, ['init', '-b', 'main'])
+			git(migrate_repo, ['config', 'user.email', 'test@example.com'])
+			git(migrate_repo, ['config', 'user.name', 'Test'])
+			git(migrate_repo, ['add', '-A'])
+			git(migrate_repo, ['commit', '-m', 'initial'])
+			const changed = settings.apply_changes(legacy_root_config('grok-bot'), ['workspace-dir: .agentflow'], { repo_root: migrate_repo, active_host: 'grok-bot', ...all_executables }).config
+			settings.write_config_atomic(config_path, changed, { repo_root: migrate_repo, active_host: 'grok-bot', ...all_executables })
+			git(migrate_repo, ['add', 'ag.json'])
+			git(migrate_repo, ['commit', '-m', 'configure workspace'])
+			settings.cli_main(['migrate-workspace', '--repo', migrate_repo, '--host', alias], { output() {} })
+			const migrated = fs.readFileSync(path.join(migrate_repo, '.agentflow/devlog.md'), 'utf8')
+			assert.match(migrated, /validated for grok-bot this round/)
+			assert.doesNotMatch(migrated, new RegExp(`validated for ${alias} this round`))
+			assert.equal(settings.validate_status_projection(migrated).valid, true)
+			assert.equal(JSON.parse(fs.readFileSync(config_path, 'utf8')).switches['target-doc'], '.agentflow/devlog.md')
+			assert.equal(git(migrate_repo, ['status', '--porcelain']).trim(), '')
+		} finally {
+			drop(migrate_repo)
+		}
+	}
+})
+
 test('exact STATUS fixtures accept valid contexts and reject authoritative extras and malformed streams', () => {
 	const base = {
 		project: 'demo', current_commit: 'abc', tests_scenarios: 'none', proven: 'none', open: 'none', next: 'await', artifacts: 'none', archived_eras: 'none',
