@@ -8,6 +8,7 @@ const node_path = require('node:path')
 const node_test = require('node:test')
 
 const runner = require('./external-runner.js')
+const host_provider = require('./host-provider.js')
 
 node_test.test('external runner has no elapsed-time deadline by default', () => {
   node_assert.equal(runner.DEFAULT_TIMEOUT_MS, 0)
@@ -114,6 +115,92 @@ node_test.test('external runner removes only opposite-host markers for provider 
       remove_temp_dir(disposable)
     }
   }
+})
+
+node_test.test('Cursor-spawned Codex and Claude workers drop parent grok markers and AGENTFLOW_HOST', async () => {
+  const parent_env = {
+    AGENTFLOW_HOST: 'grok-bot',
+    CURSOR_AGENT: '1',
+    AGENTFLOW_GROK_BOT: '1',
+    GROK_BOT: 'yes',
+    CODEX_SESSION_ID: 'codex-session',
+    CLAUDE_CODE: '1',
+    NEUTRAL_VALUE: 'keep',
+  }
+  const watched = [...Object.keys(parent_env)]
+
+  for (const provider of ['codex', 'claude']) {
+    const source = make_source_repo()
+    const disposable = make_temp_dir(`agentflow-external-runner-cursor-${provider}-`)
+    const executable = node_path.join(disposable, provider)
+    node_fs.symlinkSync(process.execPath, executable)
+    try {
+      const result = await runner.run_external_command(make_run_options(source, disposable, 'environment', {
+        command: [executable, fixture_path, 'environment', ...watched],
+        env: parent_env,
+        result_format: 'json',
+      }))
+      const child_env = result.result.value
+      node_assert.equal(child_env.AGENTFLOW_HOST, null, `${provider} inherited AGENTFLOW_HOST`)
+      node_assert.equal(child_env.CURSOR_AGENT, null, `${provider} inherited CURSOR_AGENT`)
+      node_assert.equal(child_env.AGENTFLOW_GROK_BOT, null, `${provider} inherited AGENTFLOW_GROK_BOT`)
+      node_assert.equal(child_env.GROK_BOT, null, `${provider} inherited GROK_BOT`)
+      node_assert.equal(child_env.NEUTRAL_VALUE, 'keep')
+      if (provider === 'codex') {
+        node_assert.equal(child_env.CODEX_SESSION_ID, 'codex-session')
+        node_assert.equal(child_env.CLAUDE_CODE, null)
+      } else {
+        node_assert.equal(child_env.CLAUDE_CODE, '1')
+        node_assert.equal(child_env.CODEX_SESSION_ID, null)
+      }
+      const present = Object.fromEntries(watched.map(name => [name, child_env[name] === null ? undefined : child_env[name]]))
+      node_assert.equal(host_provider.detect_host({ env: present }), provider)
+    } finally {
+      remove_temp_dir(source)
+      remove_temp_dir(disposable)
+    }
+  }
+})
+
+node_test.test('AGENTFLOW_HOST Codex↔Claude dispatch survives worker isolation', async () => {
+  const cases = [
+    { executable: 'claude', env: { AGENTFLOW_HOST: 'claude', CODEX_SESSION_ID: 'x', CLAUDE_CODE: '1' }, expected: 'claude', drop: 'CODEX_SESSION_ID', keep: 'CLAUDE_CODE' },
+    { executable: 'codex', env: { AGENTFLOW_HOST: 'codex', CLAUDE_CODE: '1', CODEX_SESSION_ID: 'x' }, expected: 'codex', drop: 'CLAUDE_CODE', keep: 'CODEX_SESSION_ID' },
+  ]
+
+  for (const test_case of cases) {
+    const source = make_source_repo()
+    const disposable = make_temp_dir(`agentflow-external-runner-dispatch-${test_case.executable}-`)
+    const executable = node_path.join(disposable, test_case.executable)
+    node_fs.symlinkSync(process.execPath, executable)
+    const watched = ['AGENTFLOW_HOST', 'CODEX_SESSION_ID', 'CLAUDE_CODE']
+    try {
+      const result = await runner.run_external_command(make_run_options(source, disposable, 'environment', {
+        command: [executable, fixture_path, 'environment', ...watched],
+        env: test_case.env,
+        result_format: 'json',
+      }))
+      const child_env = result.result.value
+      node_assert.equal(child_env.AGENTFLOW_HOST, test_case.env.AGENTFLOW_HOST, test_case.executable)
+      node_assert.equal(child_env[test_case.drop], null, test_case.executable)
+      node_assert.equal(child_env[test_case.keep], test_case.env[test_case.keep], test_case.executable)
+      const present = Object.fromEntries(watched.map(name => [name, child_env[name] === null ? undefined : child_env[name]]))
+      node_assert.equal(host_provider.detect_host({ env: present }), test_case.expected)
+    } finally {
+      remove_temp_dir(source)
+      remove_temp_dir(disposable)
+    }
+  }
+})
+
+node_test.test('worker_environment isolation is a no-op for generic node workers', () => {
+  const env = {
+    AGENTFLOW_HOST: 'claude',
+    CURSOR_AGENT: '1',
+    CODEX_SESSION_ID: 'x',
+    CLAUDE_CODE: '1',
+  }
+  node_assert.deepEqual(runner.worker_environment({ executable: process.execPath, args: [] }, env), env)
 })
 
 node_test.test('external runner parses declared JSON output without accepting process success', async () => {

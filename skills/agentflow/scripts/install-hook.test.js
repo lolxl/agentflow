@@ -21,9 +21,17 @@ const fresh_dir = () => node_fs.mkdtempSync(node_path.join(node_os.tmpdir(), 'ag
 
 const read_json = file_path => JSON.parse(node_fs.readFileSync(file_path, 'utf8'));
 
-const has_our_stop_hook = config => Array.isArray(config.hooks && config.hooks.Stop)
+const has_our_nested_stop_hook = config => Array.isArray(config.hooks && config.hooks.Stop)
   && config.hooks.Stop.some(entry => Array.isArray(entry.hooks)
     && entry.hooks.some(hook => typeof hook.command === 'string' && hook.command.includes('stop-hook.js')));
+
+const has_our_stop_hook = has_our_nested_stop_hook;
+
+const has_our_cursor_stop_hook = config => Array.isArray(config.hooks && config.hooks.stop)
+  && config.hooks.stop.some(entry => {
+    const command = typeof entry === 'string' ? entry : entry && entry.command;
+    return typeof command === 'string' && command.includes('stop-hook.js');
+  });
 
 test('project install writes both host configs', () => {
   const dir = fresh_dir();
@@ -39,7 +47,17 @@ test('project install writes both host configs', () => {
   assert.match(codex.hooks.Stop[0].hooks[0].command, /--host codex$/);
   assert.ok(claude.hooks.Stop[0].hooks[0].command.includes(locator));
   assert.ok(!claude.hooks.Stop[0].hooks[0].command.includes(__dirname));
+  assert.equal(claude.hooks.stop, undefined);
+  assert.equal(codex.hooks.stop, undefined);
+  assert.equal(claude.version, undefined);
   assert.ok(node_fs.existsSync(locator));
+
+  const cursor = read_json(node_path.join(dir, '.cursor', 'hooks.json'));
+  assert.equal(cursor.version, 1);
+  assert.ok(has_our_cursor_stop_hook(cursor));
+  assert.match(cursor.hooks.stop[0].command, /--host grok-bot$/);
+  assert.ok(cursor.hooks.stop[0].command.includes(locator));
+  assert.equal(cursor.hooks.Stop, undefined);
 });
 
 test('project install does not claim an old host-neutral hook command', () => {
@@ -65,9 +83,12 @@ test('running twice never duplicates the entry', () => {
 
   const claude = read_json(node_path.join(dir, '.claude', 'settings.json'));
   const codex = read_json(node_path.join(dir, '.codex', 'hooks.json'));
+  const cursor = read_json(node_path.join(dir, '.cursor', 'hooks.json'));
 
   assert.strictEqual(claude.hooks.Stop.length, 1);
   assert.strictEqual(codex.hooks.Stop.length, 1);
+  assert.strictEqual(cursor.hooks.stop.length, 1);
+  assert.equal(cursor.hooks.Stop, undefined);
 });
 
 test('project install replaces stale worktree hooks and collapses owned duplicates', () => {
@@ -101,6 +122,7 @@ test('--off removes the entry from both hosts', () => {
 
   assert.ok(!has_our_stop_hook(read_json(node_path.join(dir, '.claude', 'settings.json'))));
   assert.ok(!has_our_stop_hook(read_json(node_path.join(dir, '.codex', 'hooks.json'))));
+  assert.ok(!has_our_cursor_stop_hook(read_json(node_path.join(dir, '.cursor', 'hooks.json'))));
 });
 
 test('--host codex touches only the codex config', () => {
@@ -174,6 +196,7 @@ test('--quiet prints nothing; normal mode prints per-host lines', () => {
   assert.strictEqual(quiet_output, '');
   assert.match(loud_output, /claude: added/);
   assert.match(loud_output, /codex: added/);
+  assert.match(loud_output, /grok-bot: added/);
   assert.match(loud_output, /not a repository — the pre-commit devlog guard was skipped/);
 });
 
@@ -278,9 +301,12 @@ test('Stop hook command stays on a project locator and does not bake the skill d
   const dir = node_fs.realpathSync(fresh_dir());
   run(dir, ['--project', '--host', 'grok-bot', '--quiet']);
 
-  const command = read_json(node_path.join(dir, '.cursor', 'hooks.json')).hooks.Stop[0].hooks[0].command;
+  const cursor = read_json(node_path.join(dir, '.cursor', 'hooks.json'));
+  const command = cursor.hooks.stop[0].command;
   const locator = node_path.join(dir, '.agentflow', 'stop-hook.js');
   assert.equal(command, `node "${locator}" --host grok-bot`);
+  assert.equal(cursor.hooks.Stop, undefined);
+  assert.equal(cursor.version, 1);
   assert.ok(!command.includes(__dirname));
   assert.ok(!command.includes('/tmp/agentflow-skill'));
 });
@@ -345,9 +371,58 @@ test('reinstall replaces an ephemeral absolute skill path with the project locat
 
   run(dir, ['--project', '--host', 'grok-bot', '--quiet']);
 
-  const command = read_json(config_path).hooks.Stop[0].hooks[0].command;
+  const config = read_json(config_path);
+  const command = config.hooks.stop[0].command;
   assert.equal(command, `node "${node_path.join(dir, '.agentflow', 'stop-hook.js')}" --host grok-bot`);
+  assert.equal(config.hooks.Stop, undefined);
   assert.ok(!command.includes('/tmp/agentflow-skill'));
+});
+
+test('grok-bot install writes Cursor-native stop and --off removes it', () => {
+  const dir = fresh_dir();
+  run(dir, ['--project', '--host', 'grok-bot', '--quiet']);
+  const config_path = node_path.join(dir, '.cursor', 'hooks.json');
+  const config = read_json(config_path);
+  assert.deepEqual(config.hooks.stop, [{
+    command: `node "${node_path.join(dir, '.agentflow', 'stop-hook.js')}" --host grok-bot`,
+  }]);
+  assert.equal(config.hooks.Stop, undefined);
+  assert.ok(!node_fs.existsSync(node_path.join(dir, '.claude', 'settings.json')));
+  assert.ok(!node_fs.existsSync(node_path.join(dir, '.codex', 'hooks.json')));
+
+  assert.deepEqual(require('./install-hook.js').inspect({ cwd: dir, hosts: ['cursor'] }), [
+    `remove the verified Agentflow Stop hook from ${config_path}`,
+  ]);
+  run(dir, ['--project', '--host', 'cursor', '--off', '--quiet']);
+  const after = read_json(config_path);
+  assert.equal(after.hooks && after.hooks.stop, undefined);
+  assert.equal(after.hooks && after.hooks.Stop, undefined);
+  assert.deepEqual(require('./install-hook.js').inspect({ cwd: dir, hosts: ['grok'] }), []);
+});
+
+test('grok-bot reinstall migrates Claude-shaped Stop and keeps foreign cursor stop entries', () => {
+  const dir = node_fs.realpathSync(fresh_dir());
+  const config_path = node_path.join(dir, '.cursor', 'hooks.json');
+  const owned = `node "${node_path.join(__dirname, 'stop-hook.js')}" --host grok-bot`;
+  const foreign = { command: 'foreign-cursor-stop --keep' };
+  node_fs.mkdirSync(node_path.dirname(config_path), { recursive: true });
+  node_fs.writeFileSync(config_path, `${JSON.stringify({
+    hooks: {
+      afterFileEdit: [{ command: 'format.sh' }],
+      Stop: [{ hooks: [{ type: 'command', command: owned }] }],
+      stop: [foreign],
+    },
+  }, null, 2)}\n`);
+
+  run(dir, ['--project', '--host', 'grok-bot', '--quiet']);
+
+  const config = read_json(config_path);
+  assert.deepEqual(config.hooks.afterFileEdit, [{ command: 'format.sh' }]);
+  assert.deepEqual(config.hooks.stop, [
+    foreign,
+    { command: `node "${node_path.join(dir, '.agentflow', 'stop-hook.js')}" --host grok-bot` },
+  ]);
+  assert.equal(config.hooks.Stop, undefined);
 });
 
 test('inspect lists only verified owned hooks and --off removes a stale project-worktree Stop hook', () => {

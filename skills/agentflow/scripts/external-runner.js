@@ -282,6 +282,8 @@ const host_provider = require('./host-provider')
 const worker_environment = (command, requested_env) => {
   const environment = { ...(requested_env || process.env) }
   const executable = node_path.basename(command.executable)
+  const child_host = host_provider.registered_id(executable)
+  if (child_host) return host_provider.isolate_worker_env(environment, child_host)
   const opposite = host_provider.opposite_host(executable)
   if (opposite) for (const marker of host_provider.host_markers[opposite] || []) delete environment[marker]
   return environment

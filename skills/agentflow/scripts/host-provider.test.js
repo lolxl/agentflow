@@ -76,6 +76,7 @@ test('grok-bot notify returns the cursor-notify-v1 stub and does not deliver', (
 	const result = host_provider.notify('grok', { title: 'ready', body: 'review' })
 	assert.equal(result.contract, 'cursor-notify-v1')
 	assert.equal(result.status, 'stub')
+	assert.equal(result.capability, 'unsupported')
 	assert.equal(result.delivered, false)
 	assert.equal(result.host, 'grok-bot')
 	assert.equal(result.title, 'ready')
@@ -87,8 +88,67 @@ test('grok-bot spawnWorker returns the cloud-agent stub and does not launch', ()
 	assert.equal(result.contract, 'cursor-cloud-agent-v1')
 	assert.equal(result.tool, 'use_cloud_agent')
 	assert.equal(result.status, 'stub')
+	assert.equal(result.capability, 'unsupported')
 	assert.equal(result.launched, false)
 	assert.equal(result.prompt, 'implement the host registry')
+})
+
+test('hook format is Cursor-native for grok-bot and nested Stop for Codex/Claude', () => {
+	assert.deepEqual(host_provider.hook_format_for('grok-bot'), { event: 'stop', style: 'flat-command' })
+	assert.deepEqual(host_provider.hook_format_for('cursor'), { event: 'stop', style: 'flat-command' })
+	assert.deepEqual(host_provider.hook_format_for('codex'), { event: 'Stop', style: 'nested-command' })
+	assert.deepEqual(host_provider.hook_format_for('claude'), { event: 'Stop', style: 'nested-command' })
+})
+
+test('isolate_worker_env drops parent grok identity so Cursor-spawned Codex/Claude detect correctly', () => {
+	const parent = {
+		AGENTFLOW_HOST: 'grok-bot',
+		CURSOR_AGENT: '1',
+		AGENTFLOW_GROK_BOT: '1',
+		GROK_BOT: 'yes',
+		CODEX_SESSION_ID: 'codex-session',
+		CLAUDE_CODE: '1',
+	}
+	assert.throws(() => host_provider.detect_host({ env: parent }), { code: 'AG_HOST_AMBIGUOUS' })
+	assert.equal(host_provider.detect_host({ env: { AGENTFLOW_HOST: 'grok-bot', CODEX_SESSION_ID: 'x' } }), 'grok-bot')
+
+	const codex_env = host_provider.isolate_worker_env(parent, 'codex')
+	assert.equal(codex_env.AGENTFLOW_HOST, undefined)
+	assert.equal(codex_env.CURSOR_AGENT, undefined)
+	assert.equal(codex_env.AGENTFLOW_GROK_BOT, undefined)
+	assert.equal(codex_env.GROK_BOT, undefined)
+	assert.equal(codex_env.CLAUDE_CODE, undefined)
+	assert.equal(codex_env.CODEX_SESSION_ID, 'codex-session')
+	assert.equal(host_provider.detect_host({ env: codex_env }), 'codex')
+
+	const claude_env = host_provider.isolate_worker_env(parent, 'claude')
+	assert.equal(claude_env.AGENTFLOW_HOST, undefined)
+	assert.equal(claude_env.CURSOR_AGENT, undefined)
+	assert.equal(claude_env.CODEX_SESSION_ID, undefined)
+	assert.equal(claude_env.CLAUDE_CODE, '1')
+	assert.equal(host_provider.detect_host({ env: claude_env }), 'claude')
+})
+
+test('isolate_worker_env keeps intentional AGENTFLOW_HOST Codex↔Claude dispatch', () => {
+	const to_claude = host_provider.isolate_worker_env({
+		AGENTFLOW_HOST: 'claude',
+		CODEX_SESSION_ID: 'x',
+		CLAUDE_CODE: '1',
+	}, 'claude')
+	assert.equal(to_claude.AGENTFLOW_HOST, 'claude')
+	assert.equal(to_claude.CODEX_SESSION_ID, undefined)
+	assert.equal(to_claude.CLAUDE_CODE, '1')
+	assert.equal(host_provider.detect_host({ env: to_claude }), 'claude')
+
+	const to_codex = host_provider.isolate_worker_env({
+		AGENTFLOW_HOST: 'codex',
+		CLAUDE_CODE: '1',
+		CODEX_SESSION_ID: 'x',
+	}, 'codex')
+	assert.equal(to_codex.AGENTFLOW_HOST, 'codex')
+	assert.equal(to_codex.CLAUDE_CODE, undefined)
+	assert.equal(to_codex.CODEX_SESSION_ID, 'x')
+	assert.equal(host_provider.detect_host({ env: to_codex }), 'codex')
 })
 
 test('codex and claude providers wrap the existing host contract', () => {
@@ -159,9 +219,11 @@ test('resume-intake does not default to codex', () => {
 test('install-hook discovers grok-bot config through the registry', () => {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentflow-grok-hook-'))
 	assert.equal(install_hook.config_path_for('cursor', 'project', dir), path.join(dir, '.cursor', 'hooks.json'))
-	install_hook.install({ cwd: dir, hosts: ['grok-bot'], quiet: true, say: () => {} })
+	install_hook.install({ cwd: dir, hosts: ['cursor'], quiet: true, say: () => {} })
 	const config = JSON.parse(fs.readFileSync(path.join(dir, '.cursor', 'hooks.json'), 'utf8'))
-	assert.match(config.hooks.Stop[0].hooks[0].command, /stop-hook\.js" --host grok-bot$/)
+	assert.equal(config.version, 1)
+	assert.match(config.hooks.stop[0].command, /stop-hook\.js" --host grok-bot$/)
+	assert.equal(config.hooks.Stop, undefined)
 	assert.ok(!fs.existsSync(path.join(dir, '.claude', 'settings.json')))
 	fs.rmSync(dir, { recursive: true, force: true })
 })

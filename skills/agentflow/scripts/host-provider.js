@@ -116,6 +116,34 @@ const opposite_host = host => {
 	return ''
 }
 
+const default_hook_format = Object.freeze({ event: 'Stop', style: 'nested-command' })
+const cursor_hook_format = Object.freeze({ event: 'stop', style: 'flat-command' })
+
+const hook_format_for = host => {
+	const provider = get_provider(host)
+	const format = provider.hookFormat
+	if (format && typeof format.event === 'string' && typeof format.style === 'string') return format
+	return provider.installRoot === 'cursor' ? cursor_hook_format : default_hook_format
+}
+
+// Drop parent-host identity when launching a known child CLI so Cursor-spawned
+// Codex/Claude workers are not detected as grok-bot. Keep AGENTFLOW_HOST only
+// when it already names that child (Codex↔Claude dispatch).
+const isolate_worker_env = (env, child_host) => {
+	const environment = { ...(env || {}) }
+	const id = registered_id(child_host)
+	if (!id) return environment
+	for (const other of host_ids) {
+		if (other === id) continue
+		for (const marker of host_markers[other] || []) delete environment[marker]
+	}
+	if (marker_is_set(environment.AGENTFLOW_HOST)) {
+		const override = registered_id(environment.AGENTFLOW_HOST)
+		if (override !== id) delete environment.AGENTFLOW_HOST
+	}
+	return environment
+}
+
 const skill_root_for = (host, home = node_os.homedir()) => get_provider(host).skillRoot(home)
 
 const notify = (host, payload) => get_provider(host).notify(payload)
@@ -157,6 +185,8 @@ module.exports = {
 	detect_host,
 	family_for_host,
 	opposite_host,
+	hook_format_for,
+	isolate_worker_env,
 	skill_root_for,
 	notify,
 	spawn_worker,

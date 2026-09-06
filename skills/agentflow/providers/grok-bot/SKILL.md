@@ -23,7 +23,7 @@ Cursor / Grok skills are installed under the user skill path:
 - User skills: `~/.cursor/skills`
 - Agentflow copy: `~/.cursor/skills/agentflow`
 
-Project-local Cursor files use `.cursor/` (hooks stub: `.cursor/hooks.json`).
+Project-local Cursor files use `.cursor/` with native `hooks.stop` (flat `{ command }` array), not Claude's `hooks.Stop[].hooks[]`.
 
 ## Notify
 

@@ -10,7 +10,9 @@
 //   node install-hook.js --project --host codex only touch the codex config
 //   node install-hook.js --project --quiet      no output (for scripted use)
 //
-// Host config targets come from the HostProvider registry (same {hooks: {Stop: [...]}} JSON shape):
+// Host config targets come from the HostProvider registry.
+// Claude/Codex keep {hooks: {Stop: [{hooks: [{type, command}]}]}}.
+// grok-bot / Cursor use native {version, hooks: {stop: [{command}]}}:
 //   claude   project ./.claude/settings.json   global ~/.claude/settings.json
 //   codex    project ./.codex/hooks.json       global ~/.codex/hooks.json
 //   grok-bot project ./.cursor/hooks.json      global ~/.cursor/hooks.json
@@ -151,45 +153,36 @@ const backup = config_path => {
   return backup_path;
 };
 
-const add_hook = (config, host, { scope = 'project', cwd = process.cwd() } = {}) => {
-  const stop_entries = Array.isArray(config.hooks && config.hooks.Stop) ? config.hooks.Stop : [];
-  const desired_command = hook_command_for(host, cwd);
-  const owned = command => is_our_command(command, host, cwd)
-    || (scope === 'project' && is_project_worktree_command(command, host, cwd));
-  let kept_one = false;
-  const next_entries = stop_entries.flatMap(entry => {
-    if (!Array.isArray(entry.hooks)) return [entry];
-    const hooks = entry.hooks.flatMap(hook => {
-      if (!owned(hook.command)) return [hook];
-      if (kept_one) return [];
-      kept_one = true;
-      return [{ ...hook, command: desired_command }];
-    });
-    return hooks.length === 0 ? [] : [{ ...entry, hooks }];
-  });
-  if (!kept_one) next_entries.push({ hooks: [{ type: 'command', command: desired_command }] });
-  const next_config = {
-    ...config,
-    hooks: { ...(config.hooks || {}), Stop: next_entries }
-  };
-  return JSON.stringify(next_config) === JSON.stringify(config)
-    ? { config, changed: false }
-    : { config: next_config, changed: true };
+const owned_command = (command, host, { scope = 'project', cwd = process.cwd() } = {}) => (
+  is_our_command(command, host, cwd)
+  || (scope === 'project' && is_project_worktree_command(command, host, cwd))
+);
+
+const flat_entry_command = entry => {
+  if (typeof entry === 'string') return entry;
+  if (entry && typeof entry.command === 'string') return entry.command;
+  return null;
 };
 
-const remove_hook = (config, host, { scope = 'project', cwd = process.cwd() } = {}) => {
-  const stop_entries = Array.isArray(config.hooks && config.hooks.Stop) ? config.hooks.Stop : [];
+const config_changed = (next_config, config) => JSON.stringify(next_config) === JSON.stringify(config)
+  ? { config, changed: false }
+  : { config: next_config, changed: true };
+
+const strip_owned_nested_stop = (entries, host, options, on_owned) => {
   let changed = false;
   const kept = [];
 
-  for (const entry of stop_entries) {
+  for (const entry of entries) {
     if (!Array.isArray(entry.hooks)) {
       kept.push(entry);
       continue;
     }
 
-    const hooks = entry.hooks.filter(hook => !(is_our_command(hook.command, host, cwd)
-      || (scope === 'project' && is_project_worktree_command(hook.command, host, cwd))));
+    const hooks = entry.hooks.filter(hook => {
+      if (!owned_command(hook.command, host, options)) return true;
+      if (on_owned) on_owned(hook.command);
+      return false;
+    });
     if (hooks.length === entry.hooks.length) {
       kept.push(entry);
       continue;
@@ -199,35 +192,133 @@ const remove_hook = (config, host, { scope = 'project', cwd = process.cwd() } = 
     if (hooks.length > 0) kept.push({ ...entry, hooks });
   }
 
-  if (!changed) {
-    return { config, changed: false };
+  return { kept, changed };
+};
+
+const add_nested_stop_hook = (config, host, options) => {
+  const desired_command = hook_command_for(host, options.cwd);
+  const stop_entries = Array.isArray(config.hooks && config.hooks.Stop) ? config.hooks.Stop : [];
+  let kept_one = false;
+  const next_entries = stop_entries.flatMap(entry => {
+    if (!Array.isArray(entry.hooks)) return [entry];
+    const hooks = entry.hooks.flatMap(hook => {
+      if (!owned_command(hook.command, host, options)) return [hook];
+      if (kept_one) return [];
+      kept_one = true;
+      return [{ ...hook, command: desired_command }];
+    });
+    return hooks.length === 0 ? [] : [{ ...entry, hooks }];
+  });
+  if (!kept_one) next_entries.push({ hooks: [{ type: 'command', command: desired_command }] });
+  return config_changed({
+    ...config,
+    hooks: { ...(config.hooks || {}), Stop: next_entries }
+  }, config);
+};
+
+const add_flat_stop_hook = (config, host, options) => {
+  const desired_command = hook_command_for(host, options.cwd);
+  const hooks = { ...(config.hooks || {}) };
+  const existing = Array.isArray(hooks.stop) ? hooks.stop : [];
+  let kept_one = false;
+  const next_stop = existing.flatMap(entry => {
+    const command = flat_entry_command(entry);
+    if (command === null || !owned_command(command, host, options)) return [entry];
+    if (kept_one) return [];
+    kept_one = true;
+    return [typeof entry === 'string' ? desired_command : { ...entry, command: desired_command }];
+  });
+
+  if (Array.isArray(hooks.Stop)) {
+    const migrated = strip_owned_nested_stop(hooks.Stop, host, options, () => {
+      if (kept_one) return;
+      next_stop.push({ command: desired_command });
+      kept_one = true;
+    });
+    if (migrated.changed) {
+      if (migrated.kept.length === 0) delete hooks.Stop;
+      else hooks.Stop = migrated.kept;
+    }
   }
 
-  const next_hooks = { ...(config.hooks || {}) };
+  if (!kept_one) next_stop.push({ command: desired_command });
+  hooks.stop = next_stop;
 
-  if (kept.length === 0) {
-    delete next_hooks.Stop;
-  } else {
-    next_hooks.Stop = kept;
-  }
+  const next_config = { ...config, hooks };
+  if (next_config.version === undefined) next_config.version = 1;
+  return config_changed(next_config, config);
+};
+
+const add_hook = (config, host, { scope = 'project', cwd = process.cwd() } = {}) => {
+  const options = { scope, cwd };
+  return host_provider.hook_format_for(host).style === 'flat-command'
+    ? add_flat_stop_hook(config, host, options)
+    : add_nested_stop_hook(config, host, options);
+};
+
+const finish_removed_hooks = (config, next_hooks, changed) => {
+  if (!changed) return { config, changed: false };
 
   const next_config = { ...config, hooks: next_hooks };
-
-  if (Object.keys(next_hooks).length === 0) {
-    delete next_config.hooks;
-  }
-
+  if (Object.keys(next_hooks).length === 0) delete next_config.hooks;
   return { config: next_config, changed: true };
 };
 
+const remove_nested_stop_hook = (config, host, options) => {
+  const stop_entries = Array.isArray(config.hooks && config.hooks.Stop) ? config.hooks.Stop : [];
+  const { kept, changed } = strip_owned_nested_stop(stop_entries, host, options);
+  if (!changed) return { config, changed: false };
+
+  const next_hooks = { ...(config.hooks || {}) };
+  if (kept.length === 0) delete next_hooks.Stop;
+  else next_hooks.Stop = kept;
+  return finish_removed_hooks(config, next_hooks, true);
+};
+
+const remove_flat_stop_hook = (config, host, options) => {
+  const next_hooks = { ...(config.hooks || {}) };
+  let changed = false;
+
+  if (Array.isArray(next_hooks.stop)) {
+    const kept = next_hooks.stop.filter(entry => {
+      const command = flat_entry_command(entry);
+      return command === null || !owned_command(command, host, options);
+    });
+    if (kept.length !== next_hooks.stop.length) {
+      changed = true;
+      if (kept.length === 0) delete next_hooks.stop;
+      else next_hooks.stop = kept;
+    }
+  }
+
+  if (Array.isArray(next_hooks.Stop)) {
+    const migrated = strip_owned_nested_stop(next_hooks.Stop, host, options);
+    if (migrated.changed) {
+      changed = true;
+      if (migrated.kept.length === 0) delete next_hooks.Stop;
+      else next_hooks.Stop = migrated.kept;
+    }
+  }
+
+  return finish_removed_hooks(config, next_hooks, changed);
+};
+
+const remove_hook = (config, host, { scope = 'project', cwd = process.cwd() } = {}) => {
+  const options = { scope, cwd };
+  return host_provider.hook_format_for(host).style === 'flat-command'
+    ? remove_flat_stop_hook(config, host, options)
+    : remove_nested_stop_hook(config, host, options);
+};
+
 const apply_to_host = (host, scope, off, say, cwd = process.cwd()) => {
+  const id = host_provider.normalise_host(host);
   if (!off) write_locator(cwd);
-  const config_path = config_path_for(host, scope, cwd);
+  const config_path = config_path_for(id, scope, cwd);
   const config = read_config(config_path);
-  const { config: next_config, changed } = off ? remove_hook(config, host, { scope, cwd }) : add_hook(config, host, { scope, cwd });
+  const { config: next_config, changed } = off ? remove_hook(config, id, { scope, cwd }) : add_hook(config, id, { scope, cwd });
 
   if (!changed) {
-    say(`${host}: no change — the Stop hook was already ${off ? 'absent from' : 'present in'} ${config_path}`);
+    say(`${id}: no change — the Stop hook was already ${off ? 'absent from' : 'present in'} ${config_path}`);
     return;
   }
 
@@ -236,10 +327,10 @@ const apply_to_host = (host, scope, off, say, cwd = process.cwd()) => {
   node_fs.mkdirSync(node_path.dirname(config_path), { recursive: true });
   node_fs.writeFileSync(config_path, `${JSON.stringify(next_config, null, 2)}\n`);
 
-  say(`${host}: ${off ? 'removed' : 'added'} the Agentflow Stop hook ${off ? 'from' : 'in'} ${config_path}`);
+  say(`${id}: ${off ? 'removed' : 'added'} the Agentflow Stop hook ${off ? 'from' : 'in'} ${config_path}`);
 
   if (backup_path) {
-    say(`${host}: backup of the previous file: ${backup_path}`);
+    say(`${id}: backup of the previous file: ${backup_path}`);
   }
 };
 
@@ -295,8 +386,9 @@ const nudge_setup = () => {
 const install = ({ scope = 'project', off = false, quiet = false, hosts = HOSTS, cwd = process.cwd(), say: supplied_say } = {}) => {
   const say = quiet ? () => {} : message => console.log(message);
   const output = supplied_say || say;
+  const resolved_hosts = hosts.map(host => host_provider.normalise_host(host));
 
-  hosts.forEach(host => apply_to_host(host, scope, off, output, cwd));
+  resolved_hosts.forEach(host => apply_to_host(host, scope, off, output, cwd));
 
   if (scope === 'project') {
     apply_guard(off, output, cwd);
@@ -304,15 +396,16 @@ const install = ({ scope = 'project', off = false, quiet = false, hosts = HOSTS,
 
   if (!off) nudge_setup();
 
-  hosts.forEach(host => output(`Hook command (${host}): ${hook_command_for(host, cwd)}`));
+  resolved_hosts.forEach(host => output(`Hook command (${host}): ${hook_command_for(host, cwd)}`));
 };
 
 const inspect = ({ cwd = process.cwd(), scope = 'project', hosts = HOSTS } = {}) => {
   const found = [];
   for (const host of hosts) {
-    const config_path = config_path_for(host, scope, cwd);
+    const id = host_provider.normalise_host(host);
+    const config_path = config_path_for(id, scope, cwd);
     const config = read_config(config_path);
-    if (remove_hook(config, host, { scope, cwd }).changed) {
+    if (remove_hook(config, id, { scope, cwd }).changed) {
       found.push(`remove the verified Agentflow Stop hook from ${config_path}`);
     }
   }
