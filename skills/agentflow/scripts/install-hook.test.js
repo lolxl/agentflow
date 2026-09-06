@@ -10,7 +10,7 @@ const assert = require('node:assert');
 const node_fs = require('node:fs');
 const node_os = require('node:os');
 const node_path = require('node:path');
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawnSync } = require('node:child_process');
 
 const script = node_path.join(__dirname, 'install-hook.js');
 const skill_dir = require('./skill-dir.js');
@@ -236,6 +236,13 @@ test('--off leaves a changed Agentflow guard untouched and gives manual-removal 
   assert.strictEqual(node_fs.readFileSync(pre_commit_path(dir), 'utf8'), changed);
 });
 
+const write_skill = (root, stamp) => {
+  node_fs.mkdirSync(node_path.join(root, 'scripts'), { recursive: true });
+  node_fs.writeFileSync(node_path.join(root, 'SKILL.md'), `# ${stamp}\n`);
+  node_fs.writeFileSync(node_path.join(root, 'scripts', 'stop-hook.js'), `console.log('${stamp}');\n`);
+  return root;
+};
+
 test('skill-dir prefers AGENTFLOW_SKILL_DIR then the host skillRoot', () => {
   const home = node_fs.mkdtempSync(node_path.join(node_os.tmpdir(), 'agentflow-skill-home-'));
   const env_root = node_path.join(home, 'env-skill');
@@ -259,6 +266,12 @@ test('skill-dir prefers AGENTFLOW_SKILL_DIR then the host skillRoot', () => {
     cwd: home,
     host: 'grok-bot',
   }), node_path.resolve(cursor_root));
+  assert.equal(skill_dir.resolve_skill_dir({
+    env: {},
+    home,
+    cwd: home,
+    host: 'claude',
+  }), '');
 });
 
 test('Stop hook command stays on a project locator and does not bake the skill directory', () => {
@@ -289,22 +302,38 @@ test('locator resolves AGENTFLOW_SKILL_DIR at hook runtime', () => {
   assert.match(result, /--host grok-bot/);
 });
 
-test('locator fails closed when the skill directory is gone', () => {
+test('locator prefers the installing host skillRoot and does not steal another host tree', () => {
+  const dir = node_fs.realpathSync(fresh_dir());
+  const home = node_fs.mkdtempSync(node_path.join(node_os.tmpdir(), 'agentflow-multi-skill-'));
+  write_skill(node_path.join(home, '.cursor', 'skills', 'agentflow'), 'cursor-skill');
+  write_skill(node_path.join(home, '.claude', 'skills', 'agentflow'), 'claude-skill');
+  write_skill(node_path.join(home, '.codex', 'skills', 'agentflow'), 'codex-skill');
+  run(dir, ['--project', '--quiet']);
+  const locator = node_path.join(dir, '.agentflow', 'stop-hook.js');
+  const run_host = host => execFileSync('node', [locator, '--host', host], {
+    cwd: dir,
+    encoding: 'utf8',
+    env: { ...process.env, AGENTFLOW_SKILL_DIR: '', HOME: home },
+  });
+
+  assert.match(run_host('grok-bot'), /cursor-skill/);
+  assert.match(run_host('claude'), /claude-skill/);
+  assert.match(run_host('codex'), /codex-skill/);
+  assert.equal(skill_dir.resolve_skill_dir({ env: {}, home, cwd: dir, host: 'claude' }), node_path.join(home, '.claude', 'skills', 'agentflow'));
+  assert.equal(skill_dir.resolve_skill_dir({ env: {}, home, cwd: dir, host: 'codex' }), node_path.join(home, '.codex', 'skills', 'agentflow'));
+});
+
+test('locator warns and fails open when the skill directory is gone', () => {
   const dir = node_fs.realpathSync(fresh_dir());
   run(dir, ['--project', '--host', 'grok-bot', '--quiet']);
   const locator = node_path.join(dir, '.agentflow', 'stop-hook.js');
-  let failed = false;
-  try {
-    execFileSync('node', [locator, '--host', 'grok-bot'], {
-      cwd: dir,
-      encoding: 'utf8',
-      env: { ...process.env, AGENTFLOW_SKILL_DIR: '', HOME: dir },
-    });
-  } catch (error) {
-    failed = true;
-    assert.match(String(error.stderr || error.message), /AGENTFLOW_SKILL_DIR|could not locate/i);
-  }
-  assert.equal(failed, true);
+  const result = spawnSync(process.execPath, [locator, '--host', 'grok-bot'], {
+    cwd: dir,
+    encoding: 'utf8',
+    env: { ...process.env, AGENTFLOW_SKILL_DIR: '', HOME: dir },
+  });
+  assert.equal(result.status, 0);
+  assert.match(String(result.stderr || ''), /AGENTFLOW_SKILL_DIR|could not locate|fail-open/i);
 });
 
 test('reinstall replaces an ephemeral absolute skill path with the project locator', () => {

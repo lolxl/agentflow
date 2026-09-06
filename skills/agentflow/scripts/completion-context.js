@@ -294,6 +294,20 @@ const review_decision = (project_root, notebook_path, devlog_text, workspace_dir
   const ask_text = current_round.ask_text ?? '';
   const prior_replies = git_facts.parsed.rounds.slice(0, current_round.index).filter(round => round.reply_text.length > 0).map(round => round.id);
   const changed_files = git_facts.changed_files;
+  const skip_tradeoff = /^\s*(?:\+\s*)?skip-review:\s*(\S[^\r\n]*)$/imu.exec(ask_text)?.[1]?.trim();
+  if (skip_tradeoff) {
+    return {
+      status: 'skip-review',
+      reason: `owner authorized final review skip: ${skip_tradeoff}`,
+      owner_authorized: true
+    };
+  }
+  if (prior_replies.length === 0 && git_facts.ask_baseline_missing === true) {
+    return {
+      status: 'required',
+      reason: 'first-reply Ask baseline is missing; committed product changes cannot be excluded'
+    };
+  }
   const record_files = [
     notebook_path,
     node_path.posix.join(notebook_directory, `.${notebook_name}.audit.md`),
@@ -308,14 +322,6 @@ const review_decision = (project_root, notebook_path, devlog_text, workspace_dir
   const implementation_files = changed_files.filter(file =>
     !record_files.includes(file) && !record_roots.some(root => file.startsWith(root))
   );
-  const skip_tradeoff = /^\s*(?:\+\s*)?skip-review:\s*(\S[^\r\n]*)$/imu.exec(ask_text)?.[1]?.trim();
-  if (skip_tradeoff) {
-    return {
-      status: 'skip-review',
-      reason: `owner authorized final review skip: ${skip_tradeoff}`,
-      owner_authorized: true
-    };
-  }
   const bootstrap_bookkeeping_only = prior_replies.length === 0 && changed_files.length > 0 && changed_files.every(file =>
     file === '.gitignore' || configuration_files.includes(file) || record_files.includes(file) || record_roots.some(root => file.startsWith(root))
   );
@@ -363,9 +369,12 @@ const collect = ({
   const ignored = new Set(ignore_paths.map(file => String(file).split(node_path.sep).join('/')));
   const working_files = parse_porcelain_paths(git_status).filter(file => !ignored.has(file));
   const baseline_round = current_round?.index === undefined ? undefined : parsed.rounds.slice(0, current_round.index).filter(round => round.reply_text.length > 0).at(-1);
-  const baseline = baseline_round === undefined
-    ? first_ask_baseline(root, notebook_path, ask_id)
+  const first_reply = baseline_round === undefined;
+  const ask_baseline = first_reply ? first_ask_baseline(root, notebook_path, ask_id) : '';
+  const baseline = first_reply
+    ? ask_baseline
     : git(root, ['log', '-1', '--format=%H', '-S', `# ← Reply / ${baseline_round.id}`, '--', notebook_path]);
+  const ask_baseline_missing = first_reply && !/^[0-9a-f]{40}$/u.test(ask_baseline);
   const baseline_committed_files = /^[0-9a-f]{40}$/u.test(baseline)
     ? git(root, ['diff', '--name-only', `${baseline}..HEAD`]).split('\n').filter(Boolean)
     : [];
@@ -390,7 +399,8 @@ const collect = ({
     parsed,
     changed_files,
     working_files,
-    changed_lines
+    changed_lines,
+    ask_baseline_missing
   });
 
   return {

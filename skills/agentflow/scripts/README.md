@@ -95,9 +95,11 @@ not a general guarantee that code or a model claim is honest.
   host (Claude Code, Codex, and grok-bot / Cursor) and the project pre-commit
   guard, preserving backups and avoiding duplicate entries. The Stop command
   is a project-local locator (`.agentflow/stop-hook.js`) that resolves the
-  skill at hook time through `AGENTFLOW_SKILL_DIR` or the host `skillRoot()`
-  paths. It does not bake the directory that ran `agf init`, so an ephemeral
-  skill copy under `/tmp` can disappear without breaking later turns.
+  skill at hook time through `AGENTFLOW_SKILL_DIR`, then that host's
+  `skillRoot()`. It does not bake the directory that ran `agf init`. If that
+  copy was ephemeral, later turns still need `AGENTFLOW_SKILL_DIR` or the
+  host skill root to exist. A missing skill warns and exits 0 so the host
+  session is not bricked.
 
 - **`skill-dir.js`** — shared skill locator used by the Stop-hook wrapper.
 

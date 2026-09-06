@@ -18,8 +18,9 @@
 // The installed Stop command points at a project-local locator
 // (.agentflow/stop-hook.js), not the skill copy that ran `agf init`.
 // That matters when init ran from an ephemeral directory such as /tmp.
-// At hook time the locator uses AGENTFLOW_SKILL_DIR, then the host
-// skillRoot() paths under ~/.cursor, ~/.claude, ~/.codex, or ~/.agents.
+// At hook time the locator uses AGENTFLOW_SKILL_DIR, then that --host
+// skillRoot(). It does not fall through to another host's skill tree.
+// A missing skill warns and exits 0 so the host session is not bricked.
 //
 // Writing a project file for a host that never runs in this repo is harmless:
 // each CLI only reads its own file, and the hook itself no-ops without a

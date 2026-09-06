@@ -133,6 +133,21 @@ test('ag-settings templates and STATUS accept grok-bot as a registered host', ()
 	assert.match(status, /validated for grok-bot this round/)
 })
 
+test('grok-bot cli-provider off does not select Codex or Claude profiles', () => {
+	const grok = settings.make_template('grok-bot')
+	grok.switches['cli-provider'] = 'off'
+	assert.equal(settings.select_profile(grok, { active_host: 'grok-bot', executables: ['codex', 'claude'] }), null)
+	grok.switches['cli-provider'] = 'on'
+	assert.equal(settings.select_profile(grok, { active_host: 'grok-bot', executables: ['codex', 'claude'] }).id, 'codex-default')
+
+	const codex = settings.make_template('codex')
+	assert.equal(settings.select_profile(codex, { active_host: 'codex', executables: ['codex', 'claude'] }).id, 'codex-default')
+	assert.equal(settings.select_profile(codex, { active_host: 'codex', executables: ['codex'] }).id, 'codex-default')
+	const claude = settings.make_template('claude')
+	assert.equal(settings.select_profile(claude, { active_host: 'claude', executables: ['codex', 'claude'] }).id, 'claude-default')
+	assert.equal(settings.select_profile(claude, { active_host: 'claude', executables: ['claude'] }).id, 'claude-default')
+})
+
 test('resume-intake does not default to codex', () => {
 	assert.throws(() => intake.parse_args([], { env: {} }), /unknown|registered host|AGENTFLOW_HOST/)
 	assert.equal(intake.parse_args(['--host', 'cursor'], { env: {} }).active_host, 'grok-bot')

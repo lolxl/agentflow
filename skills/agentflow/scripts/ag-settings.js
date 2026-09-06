@@ -394,7 +394,8 @@ const select_profile = (config, options = {}) => {
 	const cli_provider = options.cli_provider === undefined
 		? config && config.switches ? config.switches['cli-provider'] : 'off'
 		: options.cli_provider
-	const host_family = options.host_family || family_for_host(options.active_host || options.explicit_host || options.coordinator_host || '')
+	const active_host = options.active_host || options.explicit_host || options.coordinator_host || ''
+	const host_family = options.host_family || family_for_host(active_host)
 	const available = typeof options.executable_available === 'function'
 		? options.executable_available
 		: typeof options.is_executable_available === 'function'
@@ -410,7 +411,7 @@ const select_profile = (config, options = {}) => {
 		if (!profile || !Array.isArray(profile.command) || typeof profile.command[0] !== 'string') continue
 		if (required_tier !== undefined && !profile_has_tier(profile, required_tier)) continue
 		if (available(profile.command[0]) !== true) continue
-		const family_ok = any_family || (cli_provider === 'off' && (!host_family || profile_family(profile) === host_family))
+		const family_ok = any_family || (cli_provider === 'off' && host_provider.registered_id(active_host) !== 'grok-bot' && (!host_family || profile_family(profile) === host_family))
 		if (!family_ok) continue
 		if (selected === null || profile.priority > selected.priority) selected = profile
 	}
@@ -461,6 +462,7 @@ const profile_has_tier = (profile, tier) => tier_names_for_profile(profile).incl
 const pipeline_profile_eligible = (config, profile, active_host = '') => {
 	if (!profile) return false
 	if (config.switches['cli-provider'] === 'on') return true
+	if (host_provider.registered_id(active_host) === 'grok-bot') return false
 	const host_family = family_for_host(active_host)
 	return !active_host || !host_family || profile_family(profile) === host_family
 }

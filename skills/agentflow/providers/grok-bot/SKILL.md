@@ -41,7 +41,7 @@ The default template keeps `cli-provider: on` and Codex/Claude worker profiles. 
 
 To stay on Grok Bot / Cursor with no external CLI:
 
-1. Set `cli-provider: off`.
+1. Set `cli-provider: off`. grok-bot has no CLI family, so this does not select Codex or Claude profiles.
 2. Do not expect `spawnWorker` to launch a cloud agent. It stays a stub (`launched: false`).
 3. Activation and notebook-only rounds do not need an external reviewer.
 
@@ -49,7 +49,7 @@ If `cli-provider` stays `on` and neither `codex` nor `claude` is available, sett
 
 ## Ephemeral skill copies
 
-`agf init` may run from a temporary skill directory such as `/tmp/agentflow-skill`. The Stop hook does not bake that path. A project-local locator (`.agentflow/stop-hook.js`) looks up `AGENTFLOW_SKILL_DIR`, then the host `skillRoot()` (`~/.cursor/skills/agentflow` for grok-bot). If you inited from a temp copy, install the skill under the user skill path or set `AGENTFLOW_SKILL_DIR` to a directory that still exists.
+`agf init` may run from a temporary skill directory such as `/tmp/agentflow-skill`. The Stop hook does not bake that path. A project-local locator (`.agentflow/stop-hook.js`) looks up `AGENTFLOW_SKILL_DIR`, then that host's `skillRoot()` (`~/.cursor/skills/agentflow` for grok-bot). It does not fall through to another host's skill tree. If the temp copy is gone and neither of those locations exists, the locator warns and exits 0 so the session is not bricked.
 
 ## Chef / TEAM / quiet-hours
 
