@@ -109,8 +109,12 @@ test('isolate_worker_env drops parent grok identity so Cursor-spawned Codex/Clau
 		CODEX_SESSION_ID: 'codex-session',
 		CLAUDE_CODE: '1',
 	}
-	assert.throws(() => host_provider.detect_host({ env: parent }), { code: 'AG_HOST_AMBIGUOUS' })
-	assert.equal(host_provider.detect_host({ env: { AGENTFLOW_HOST: 'grok-bot', CODEX_SESSION_ID: 'x' } }), 'grok-bot')
+	assert.equal(host_provider.detect_host({ env: parent }), 'grok-bot')
+	assert.throws(() => host_provider.detect_host({ env: {
+		CURSOR_AGENT: '1',
+		CODEX_SESSION_ID: 'codex-session',
+		CLAUDE_CODE: '1',
+	} }), { code: 'AG_HOST_AMBIGUOUS' })
 
 	const codex_env = host_provider.isolate_worker_env(parent, 'codex')
 	assert.equal(codex_env.AGENTFLOW_HOST, undefined)
