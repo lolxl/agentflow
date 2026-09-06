@@ -21,6 +21,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { TextDecoder } = require('node:util')
 const ag_settings = require('./ag-settings.js')
+const host_provider = require('./host-provider')
 const install_hook = require('./install-hook.js')
 const setup = require('./setup.js')
 
@@ -140,7 +141,7 @@ const update_ignore_file = (repo) => {
 	const current = fs.existsSync(ignore_path) ? fs.readFileSync(ignore_path, 'utf8') : ''
 	const lines = current.split(/\r?\n/u).filter(Boolean)
 	const next = [...lines]
-	for (const entry of ['.claude/', '.codex/', '.worktrees/']) if (!next.includes(entry)) next.push(entry)
+	for (const entry of [...host_provider.ignore_entries(), '.worktrees/']) if (!next.includes(entry)) next.push(entry)
 	const text = `${next.join('\n')}\n`
 	if (text !== current) ag_settings.write_text_atomic(ignore_path, text)
 	return ignore_path
@@ -363,7 +364,7 @@ const host_from_root_status = (repo) => {
 	if (!fs.existsSync(notebook)) return ''
 	const text = fs.readFileSync(notebook, 'utf8')
 	if (!ag_settings.validate_status_projection(text).valid) return ''
-	const match = /^Configuration:\s+[^\r\n]+\s+for\s+(codex|claude)\s+this round\.$/mu.exec(ag_settings.status_region(text).body)
+	const match = new RegExp(`^Configuration:\\s+[^\\r\\n]+\\s+for\\s+(${host_provider.status_host_pattern()})\\s+this round\\.$`, 'mu').exec(ag_settings.status_region(text).body)
 	return match ? match[1] : ''
 }
 
@@ -374,7 +375,7 @@ const active_host_for_cli = (repo) => {
 		if (!(error instanceof ag_settings.SettingsError) || error.code !== 'AG_HOST_UNKNOWN') throw error
 		const recorded_host = host_from_root_status(repo)
 		if (recorded_host) return recorded_host
-		throw new ag_settings.SettingsError('agf could not identify the project host from the current STATUS; run godev once from Codex or Claude, then retry', { code: 'AG_HOST_UNKNOWN' })
+		throw new ag_settings.SettingsError(`agf could not identify the project host from the current STATUS; run godev once from a registered host (${host_provider.known_host_text()}), then retry`, { code: 'AG_HOST_UNKNOWN' })
 	}
 }
 
@@ -1343,7 +1344,7 @@ const setup_main = (argv, cwd, log, ask, width = 80) => {
 	return setup.main({ argv, ask, say: log })
 }
 
-const hooks_help = width => `${usage_words('usage: agf hooks [--project|--global] [--host <claude|codex|all>] [--off]', width).join('\n')}\n\n${usage_words('Project scope is the default. --off removes only hooks whose Agentflow ownership can be verified.', width).join('\n')}\n`
+const hooks_help = width => `${usage_words(`usage: agf hooks [--project|--global] [--host <${host_provider.known_host_text()}, all>] [--off]`, width).join('\n')}\n\n${usage_words('Project scope is the default. --off removes only hooks whose Agentflow ownership can be verified.', width).join('\n')}\n`
 
 const hooks_main = (argv, cwd, log, ask, width = 80) => {
 	if (argv.some(argument => argument === '-h' || argument === '--help')) {
@@ -1367,7 +1368,7 @@ const hooks_main = (argv, cwd, log, ask, width = 80) => {
 			return 1
 		}
 	}
-	if (!['all', 'claude', 'codex'].includes(host)) {
+	if (host !== 'all' && !host_provider.is_registered_host(host)) {
 		log(`unknown --host value "${host}"\n\n${hooks_help(width)}`)
 		return 1
 	}
@@ -1375,7 +1376,7 @@ const hooks_main = (argv, cwd, log, ask, width = 80) => {
 		cwd,
 		scope: argv.includes('--global') ? 'global' : 'project',
 		off: argv.includes('--off'),
-		hosts: host === 'all' ? ['claude', 'codex'] : [host],
+		hosts: host === 'all' ? host_provider.hook_hosts() : [host_provider.normalise_host(host)],
 		say: log,
 	})
 	return 0

@@ -1,0 +1,7 @@
+This product includes software developed as agfnow/agentflow
+(https://github.com/agfnow/agentflow), licensed under the Apache License,
+Version 2.0. See the LICENSE file for the full license text.
+
+The lolxl/agentflow port keeps that Apache-2.0 license and adds a HostProvider
+registry plus a grok-bot (Cursor / Grok) host adapter. Host-specific Chef,
+TEAM, and quiet-hours notes live only in the grok-bot provider docs.

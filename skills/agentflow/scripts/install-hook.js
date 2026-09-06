@@ -1,18 +1,19 @@
 'use strict';
 
-// Turn the Agentflow Stop-hook referee on (or off) for one or both host CLIs.
+// Turn the Agentflow Stop-hook referee on (or off) for registered host CLIs.
 // It backs up each config file first, then adds (or removes) exactly one
 // Stop-hook entry. Running it twice never makes a duplicate.
 //
-//   node install-hook.js --project              add for both hosts, this repo
-//   node install-hook.js --global               add for both hosts, machine-wide
+//   node install-hook.js --project              add for all registered hosts, this repo
+//   node install-hook.js --global               add for all registered hosts, machine-wide
 //   node install-hook.js --project --off        remove again
 //   node install-hook.js --project --host codex only touch the codex config
 //   node install-hook.js --project --quiet      no output (for scripted use)
 //
-// Host config targets (both use the same {hooks: {Stop: [...]}} JSON shape):
-//   claude  project ./.claude/settings.json   global ~/.claude/settings.json
-//   codex   project ./.codex/hooks.json       global ~/.codex/hooks.json
+// Host config targets come from the HostProvider registry (same {hooks: {Stop: [...]}} JSON shape):
+//   claude   project ./.claude/settings.json   global ~/.claude/settings.json
+//   codex    project ./.codex/hooks.json       global ~/.codex/hooks.json
+//   grok-bot project ./.cursor/hooks.json      global ~/.cursor/hooks.json
 //
 // Writing a project file for a host that never runs in this repo is harmless:
 // each CLI only reads its own file, and the hook itself no-ops without a
@@ -27,6 +28,7 @@ const node_fs = require('node:fs');
 const node_os = require('node:os');
 const node_path = require('node:path');
 const { execFileSync } = require('node:child_process');
+const host_provider = require('./host-provider');
 
 const hook_command_for = host => `node "${node_path.join(__dirname, 'stop-hook.js')}" --host ${host}`;
 
@@ -36,12 +38,12 @@ const guard_marker = 'agentflow devlog-guard';
 const guard_command = `node "${node_path.join(__dirname, 'devlog-guard.js')}"`;
 const guard_script = `#!/bin/sh\n# ${guard_marker} — blocks committing root devlog.md on a non-default branch (I-039).\n# Installed by install-hook.js; remove with: node install-hook.js --project --off\n${guard_command}\n`;
 
-const HOSTS = ['claude', 'codex'];
+const HOSTS = host_provider.hook_hosts();
 
 const parse_owned_command = command => {
   if (typeof command !== 'string') return null;
 
-  const match = command.trim().match(/^node\s+(?:(['"])(.*?)\1|([^\s]+))\s+--host\s+(claude|codex)$/);
+  const match = command.trim().match(host_provider.hook_command_host_pattern());
   if (!match) return null;
 
   return { script: node_path.resolve(match[2] || match[3]), host: match[4] };
@@ -84,10 +86,11 @@ const parse_args = argv => {
   const quiet = flags.has('--quiet');
   const host_index = args.indexOf('--host');
   const host_value = host_index >= 0 ? args[host_index + 1] : 'all';
-  const hosts = host_value === 'all' ? HOSTS : [host_value];
-
-  if (!hosts.every(host => HOSTS.includes(host))) {
-    console.error(`Unknown --host value: ${host_value} (use claude, codex, or all)`);
+  let hosts;
+  try {
+    hosts = host_value === 'all' ? HOSTS : [host_provider.normalise_host(host_value)];
+  } catch (error) {
+    console.error(`Unknown --host value: ${host_value} (use ${HOSTS.join(', ')}, or all)`);
     process.exit(1);
   }
 
@@ -95,10 +98,8 @@ const parse_args = argv => {
 };
 
 const config_path_for = (host, scope, cwd = process.cwd()) => {
-  const base = scope === 'global' ? node_os.homedir() : cwd;
-  const file = host === 'claude' ? node_path.join('.claude', 'settings.json') : node_path.join('.codex', 'hooks.json');
-
-  return node_path.join(base, file);
+  const id = host_provider.normalise_host(host);
+  return host_provider.discover_config(id, { scope, cwd, home: node_os.homedir() }).hookConfigPath;
 };
 
 const read_config = config_path => {

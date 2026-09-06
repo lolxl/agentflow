@@ -2,7 +2,9 @@
 
 [English](README.md) · **繁體中文**
 
-一套給 AI 編程代理（Claude Code、Codex 及相容的主機程式）使用的「檔案化工作紀錄」流程。
+一套給 AI 編程代理（Claude Code、Codex、Cursor / Grok 及相容的主機程式）使用的「檔案化工作紀錄」流程。
+
+這個倉庫是 [`agfnow/agentflow`](https://github.com/agfnow/agentflow) 的 **lolxl 移植**（Apache-2.0；見 `NOTICE`）。核心流程與腳本保持主機中立。主機身分走 `HostProvider` 登錄表（`skills/agentflow/scripts/host-provider.js`）。Codex 與 Claude 包住既有主機；**grok-bot**（別名 `grok`、`cursor`）是 Cursor / Grok 轉接器。不明主機會被擋住，不會預設成 Codex。Chef / TEAM / quiet-hours 只寫在 `skills/agentflow/providers/grok-bot/SKILL.md`，不進核心。
 
 - **它做什麼：** AI 透過一個純文字紀錄檔（`devlog.md`）跟你對話，而不是透過終端機。每一個請求、答覆、決定、提交都寫進這個檔案，所以整個專案歷史都查得到，而且任何一個中途死掉的工作階段都能從紀錄裡復原。
 
@@ -13,13 +15,15 @@
 - **當作 skill 安裝（Claude Code、Codex 及其他主機程式）：**
 
 	```
-	npx skills add agfnow/agentflow
+	npx skills add lolxl/agentflow
+	# 上游來源：npx skills add agfnow/agentflow
 	```
 
 - **當作 Claude Code plugin 安裝（有新版本時會自動更新）：**
 
 	```
-	/plugin marketplace add agfnow/agentflow
+	/plugin marketplace add lolxl/agentflow
+	# 上游來源：/plugin marketplace add agfnow/agentflow
 	```
 
 ## 驗證安裝

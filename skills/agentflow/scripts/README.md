@@ -26,6 +26,8 @@ not a general guarantee that code or a model claim is honest.
 
 - **`stop-hook.js`** — the independent final host check. It reads the real clock and repository push state, supplies transcript terminal output when a devlog was edited, and exits `2` only when the linter returned a failure. A failure keeps the current round open for repair; it does not ask the host to create a new owner-looking Ask. `stop_hook_active` exits `0` so one correction cannot trap a session in a loop. A valid `AGENTFLOW_EXTERNAL_DELEGATE` marker bypasses owner-round checks; the launcher remains responsible for provenance and isolation.
 
+- **`host-provider.js`** — the host registry. Every coordinator identity is a registered provider (`codex`, `claude`, `grok-bot`) with `id`, `skillRoot`, `notify`, `spawnWorker`, `optionalLint`, and `discoverConfig`. Discovery and normalisation go through the registry. `AGENTFLOW_HOST` is a validated override. Unknown hosts stay blocked (`AG_HOST_INVALID` / `AG_HOST_UNKNOWN`); there is no default-to-codex. Thin adapters live in `scripts/providers/`. grok-bot notify is `cursor-notify-v1` (stub); spawnWorker is `use_cloud_agent` / `cursor-cloud-agent-v1` (stub, does not launch). Chef / TEAM / quiet-hours stay in `providers/grok-bot/SKILL.md`.
+
 - **`ag-settings.js`** — the shared settings module and CLI. It resolves the
   adjacent configuration, rejects duplicate or malformed JSON, validates the
   schema, writes atomically, displays settings, applies changes, projects the
@@ -89,17 +91,17 @@ not a general guarantee that code or a model claim is honest.
   `agf hooks --project`. It protects the root notebook and configuration
   from being staged on a feature branch.
 
-- **`install-hook.js`** — installs or removes the Claude Code and Codex Stop
-  hooks and the project pre-commit guard, preserving backups and avoiding
-  duplicate entries.
+- **`install-hook.js`** — installs or removes Stop hooks for every registered
+  host (Claude Code, Codex, and grok-bot / Cursor) and the project pre-commit
+  guard, preserving backups and avoiding duplicate entries.
 
-- **`setup.js`** — checks Node, Git, the skill files, the user's `agf()` and `agf-looper()` shell functions, and `AGF_OPEN`; `--fix` prefers usable `$HOME/.agents/...`, `$HOME/.codex/...`, and `$HOME/.claude/...` installations in that order, then falls back to the verified active skill directory for a plugin-only installation without guessing cache paths. It accepts an existing managed shortcut to any usable matching installation despite indentation differences and replaces only a recognised stale Agentflow shortcut.
+- **`setup.js`** — checks Node, Git, the skill files, the user's `agf()` and `agf-looper()` shell functions, and `AGF_OPEN`; `--fix` prefers usable `$HOME/.agents/...` then each registered host skill root (`$HOME/.codex/...`, `$HOME/.claude/...`, `$HOME/.cursor/...`) in registry order, then falls back to the verified active skill directory for a plugin-only installation without guessing cache paths. It accepts an existing managed shortcut to any usable matching installation despite indentation differences and replaces only a recognised stale Agentflow shortcut.
 
 - **`suite-evidence.js`** — records bounded evidence for a declared test suite.
 
 ## Hosts and manual use
 
-Claude Code and Codex use the same Stop-hook contract: JSON on stdin with a
+Registered hosts use the same Stop-hook contract: JSON on stdin with a
 working directory, `stop_hook_active`, and optional transcript path; exit `2`
 blocks the turn. The installed command carries its owning host explicitly.
 Other clients can call the same Node entry points when they can provide the
@@ -128,5 +130,5 @@ numbers, integers, strings, and arrays must retain their declared JSON types.
 Run from this directory:
 
 ```text
-node --test ag-settings.test.js agf.test.js alignment.test.js cross-check-plan.test.js delegation-route.test.js devlog-guard.test.js external-runner.test.js install-hook.test.js looper.test.js metrics.test.js prompt-compression.test.js queue-contract.test.js release.test.js resume-intake.test.js round-linter.test.js setup.test.js stop-hook.test.js suite-evidence.test.js terminal.test.js
+node --test host-provider.test.js ag-settings.test.js agf.test.js alignment.test.js cross-check-plan.test.js delegation-route.test.js devlog-guard.test.js external-runner.test.js install-hook.test.js looper.test.js metrics.test.js prompt-compression.test.js queue-contract.test.js release.test.js resume-intake.test.js round-linter.test.js setup.test.js stop-hook.test.js suite-evidence.test.js terminal.test.js
 ```
