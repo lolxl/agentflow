@@ -7,7 +7,7 @@
     {
       "name": "agentflow",
       "source": "./",
-      "description": "File-logged conversation protocol and on-demand development pipeline: the owner converses through devlog.md; wishes that change product behavior run the requirements → specification → acceptance chain."
+      "description": "A project notebook for Codex and Claude Code, with resumable work, optional planning, and independent review."
     }
   ]
 }

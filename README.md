@@ -1,46 +1,93 @@
-# agentflow
+# Agentflow v8.2.0
 
 **English** · [繁體中文](README.zh-tw.md)
 
-A file-logged way of working for AI coding agents (Claude Code, Codex, and compatible hosts).
+Give your AI assistant a project notebook, so tomorrow’s conversation can pick up today’s work.
 
-- **What it does:** the agent converses with you through a plain text record file (`devlog.md`) instead of the terminal. Every ask, answer, decision, and commit lands in the file, so the whole project history is auditable and any dead session recovers from the record.
+Agentflow works with **Codex and Claude Code**. It keeps your requests, decisions, progress, and results in a readable file. You can use it to improve a document, fix a bug, or carry a larger project across several sessions.
 
-- **Two layers:** a base conversation protocol (rounds, STATUS, Git discipline, delegation rules) for any task, and an on-demand development pipeline (requirements → specification → implementation → acceptance) that loads only when a wish changes product behavior.
+- **Start simply:** Type `godev`, then describe the task in your own words.
+
+- **Find the result:** Open the notebook named in the assistant’s closing message, usually `.agentflow/devlog.md`.
+
+- **Get help quickly:** Ask your agent, “How do I use the Agentflow skill for this task?” It can explain the controls using your actual project.
 
 ## Install
 
-- **As a skill (Claude Code, Codex, and other hosts):**
+You need Node.js 18 or newer and a working Codex or Claude Code installation. Git is needed for version history, feature workspaces, and some installation methods. Ordinary notebook work can use a folder that is not a Git repository.
 
-	```
-	npx skills add agfnow/agentflow
-	```
+Run this in a terminal and choose your assistant and installation scope:
 
-- **As a Claude Code plugin (auto-updates on new releases):**
+```sh
+npx skills add agfnow/agentflow
+```
 
-	```
-	/plugin marketplace add agfnow/agentflow
-	```
+For the Claude Code plugin route, add the marketplace in Claude Code:
 
-## Verify installation
+```text
+/plugin marketplace add agfnow/agentflow
+```
 
-Requirements: Node.js 18 or newer and Git.
+Then install the `agentflow` plugin from that marketplace. Plugin updates follow your [Claude Code marketplace update settings](https://code.claude.com/docs/en/discover-plugins#configure-auto-updates). Start a new assistant session after installation or updates.
 
-Set `AGENTFLOW_SKILL_DIR` to the actual directory where `npx skills add` installed `agentflow`, then run the installed setup check:
+## Choose the main model
 
-	```sh
-	AGENTFLOW_SKILL_DIR="<actual installed agentflow skill directory>"
-	node "$AGENTFLOW_SKILL_DIR/scripts/setup.js"
-	```
+For Codex, the Agentflow maintainer recommends **`gpt-5.6-sol/low` as the most stable coordinator choice in their use**: model `gpt-5.6-sol`, reasoning effort `low`. The coordinator is the assistant you talk to; it organizes the task and checks the result. This recommendation does not change your model settings automatically. [Official model reference](https://developers.openai.com/api/docs/models/gpt-5.6-sol).
 
-The first `godev` use installs the project's hooks. If an optional worker is unavailable, that is an availability result, not proof that installation failed.
+## Keep it updated
 
-## Use
+If you installed through `npx skills add`, periodically run:
 
-- Type `godev` (or `/devlog`) in a session to activate the protocol; type `ag` to force the full development pipeline on a wish.
+```sh
+npx skills update agentflow
+```
 
-- The full user guide ships with the skill: see [`skills/agentflow/docs/AG_GUIDE.md`](skills/agentflow/docs/AG_GUIDE.md) (English) and [`skills/agentflow/docs/AG_GUIDE.zh-tw.md`](skills/agentflow/docs/AG_GUIDE.zh-tw.md) (繁體中文), including which AI models are strong enough to run it.
+The [Skills CLI](https://github.com/vercel-labs/skills#skills-update) takes the installed skill name for updates. `agfnow/agentflow` is the installation source, so `npx skills update agfnow/agentflow` is not the current name-based update syntax. Add `-g` for global installs, or run from the project with `-p` for project installs.
 
-## How model routing works
+We recommend a weekly **crontab** job on macOS or Linux if you want automatic updates. Ask your agent to set it up for your installation. The [guide](skills/agentflow/docs/AG_GUIDE.md#keep-the-skill-up-to-date) includes a Monday-morning example, explicit paths, and logging.
 
-- Each project keeps version-7 configuration in the adjacent `ag.json`. Its public roots and setting paths use kebab-case, including `schema-version`, `pipeline-roles`, `external-workers`, and switches such as `target-doc` and `allow-ag`. Project-defined worker profiles map the `best`, `better`, `basic`, and `cheap` tiers to literal commands and models. Unknown keys warn and are ignored; malformed JSON or invalid recognized values are rejected.
+## Try it
+
+Send this to your assistant:
+
+```text
+godev
+Rewrite the welcome page for someone visiting for the first time.
+Keep the existing links. Let me review the result before uploading it.
+```
+
+Small tasks can stay simple. `fast-lane` keeps one task with the main assistant and skips external review while retaining necessary checks and self-review. `cross-check` requests an independent review of finished work. `ag` requests the full development process when the project’s `allow-ag` setting permits it.
+
+The notebook keeps the conversation, so a fresh session can resume an unfinished request with `godev`. With Git, Agentflow normally commits completed work and pushes when a remote exists; tell it when you want local work only.
+
+## Check installation
+
+Ask your agent to run `agf setup`, or run it in a terminal if the shortcut is available. `agf setup --fix` can add missing shortcuts after backing up shell settings. An unavailable optional worker does not mean installation failed. Follow any restart notice after project hooks are installed.
+
+<details>
+
+<summary>If the agf shortcut is missing</summary>
+
+For a global installation at one of these locations, run the matching setup file. For another installation location, ask your agent to locate its installed skill first.
+
+```sh
+node "$HOME/.codex/skills/agentflow/scripts/setup.js"
+```
+
+```sh
+node "$HOME/.claude/skills/agentflow/scripts/setup.js"
+```
+
+</details>
+
+## Read next
+
+- [Everyday user guide](skills/agentflow/docs/AG_GUIDE.md), with the YouTube introduction.
+
+- [繁體中文使用指南](skills/agentflow/docs/AG_GUIDE.zh-tw.md).
+
+- [Changelog](CHANGELOG.md), newest version first.
+
+- [Script reference](skills/agentflow/scripts/README.md), for technical setup and recovery.
+
+Project settings live in `ag.json`, using the version-7 configuration format. Type `settings` to inspect them. That format number is separate from the Agentflow release version; model profiles live under `external-workers`, and advisor choices under `pipeline-roles`.
